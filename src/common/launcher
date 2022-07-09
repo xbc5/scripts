@@ -1,0 +1,3 @@
+#!/bin/bash
+[[ `whoami` == 'root' ]] && { echo "never run Rofi as root"; exit 1; } # bad pid file permissions
+rofi -dmenu -pid /tmp/rofi.pid

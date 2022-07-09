@@ -1,0 +1,13 @@
+#!/bin/zsh
+
+[[ `whoami` == 'root' ]]\
+  && echo "don't run user updates as root"\
+  && exit 1
+
+(
+  cd ${HOME} &&\
+  source ${HOME}/.zinit/bin/zinit.zsh
+  mr update &&\
+  zinit self-update --yes &&\
+  zinit update --all --quiet --parallel
+)

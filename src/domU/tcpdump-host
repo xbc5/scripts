@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "monitoring $1"
+sudo tcpdump host `dig +short "$1"`

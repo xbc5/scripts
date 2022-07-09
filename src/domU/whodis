@@ -1,0 +1,46 @@
+#!/bin/env python3
+from subprocess import check_output
+import sys
+from ipaddress import ip_address
+
+
+def listify(byts):
+    return byts.decode('utf-8').split()
+
+
+def is_ip(target):
+    try:
+        ip_address(target)
+    except ValueError:
+        return False
+    return True
+
+
+def ips_only(hosts):
+    return list(filter(is_ip, hosts))
+
+
+def dig(domain):
+    return listify(check_output(f'dig +short {domain}', shell=True))
+
+
+def ipinfo(target):
+    return check_output(f"curl --silent https://ipinfo.io/{target}", shell=True).decode("utf-8")
+
+
+def get_info(target):
+    ips = [target] if is_ip(target) else ips_only(dig(target))
+    for ip in ips:
+        yield ipinfo(ip)
+
+
+def display_info (targets):
+    reset="\033[0m"
+    bold="\033[1m"
+    for t in targets:
+        print(f"{bold}{t}{reset}:")
+        for info in get_info(t):
+            print(f"{info}\n")
+
+
+display_info(sys.argv[1:])

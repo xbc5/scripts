@@ -1,0 +1,45 @@
+#!/bin/bash
+
+len="$1"
+target="$2"
+
+default_len=27
+
+case $1 in
+  "help"|"--help"|"-h")
+    echo "Usage: `basename $0` [LEN] [TARGET]"
+
+    echo -e "\nTARGETS:"
+    echo -e "  ff, firefox\t\t\t: copy to the Firefox clipboard."
+    echo -e "  cli, term, terminal, t, c\t: copy to the terminal clipboard."
+    echo ""
+    echo "Note:"
+    echo "  LEN defaults to $default_len."
+    echo "  TARGET defaults to stdout."
+    echo ""
+    exit
+    ;;
+  "")
+    # a default len
+    len=$default_len
+    ;;
+esac
+
+
+function gen(){
+  echo `\pwgen --capitalize --numerals --symbols --secure $len 1`
+}
+
+case "$target" in
+  "ff"|"firefox")
+    gen | xclip -selection clipboard
+    echo "you can paste it to Firefox"
+    ;;
+    "cli"|"term"|"terminal"|"t"|"c")
+    gen | xclip
+    echo "you can paste it to a CLI"
+    ;;
+  *)
+    gen
+    ;;
+esac

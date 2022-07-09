@@ -1,0 +1,98 @@
+#!/bin/env python3
+from os.path import join, isfile, splitext, basename
+from os import listdir, chdir, symlink, remove
+from random import choice
+from pathlib import Path
+from sys import argv, exit
+from subprocess import check_call
+from re import search
+from os import getuid
+
+if getuid() != 0:
+    print("must be run as root")
+    exit(5)
+
+vpn_dir = "/rw/config/vpn"
+conf_dir = join(vpn_dir, "fav")
+
+def extension(p):
+    return splitext(p)[1]
+
+def is_config(p):
+    return isfile(p) and extension(p) == ".ovpn"
+
+def get_current():
+    return basename(str(Path(join(vpn_dir, "vpn-client.conf")).resolve()))
+
+def exclude_current(lst):
+    current = get_current()
+    return list(filter(lambda f: f != current, lst))
+
+def configs(root):
+    return [i for i in listdir(root) if is_config(join(root, i))]
+
+def random(configs):
+    return choice(configs)
+
+def set_link(f):
+    chdir(vpn_dir)
+    link = join(vpn_dir, "vpn-client.conf")
+    conf = join(conf_dir, f)
+    try:
+        remove(link)
+    except FileNotFoundError:
+        pass
+
+    symlink(conf, link)
+
+def valid_term(term):
+    return search('^[-\w\.]+$', term) is not None
+
+def choose_random():
+    return random(exclude_current(configs(conf_dir)))
+
+def choose(term):
+    return list(filter(lambda f: search(term, f), configs(conf_dir)))
+
+def start():
+    check_call("systemctl stop qubes-vpn-handler", shell=True)
+    check_call("systemctl start qubes-vpn-handler", shell=True)
+
+def no_configs(lst):
+    return len(lst) == 0
+
+def no_args(lst):
+    return len(lst) == 1
+
+def multiple_configs(lst):
+    return len(lst) > 1
+
+if no_args(argv):
+    print("you must provide an arg: 'random', or a config search term")
+    exit(4)
+
+if argv[1] == "random":
+    conf = choose_random()
+    print(f"using {conf}")
+    set_link(conf)
+    start()
+else:
+    if not valid_term(argv[1]):
+        print("must be alphanumeric with dashes, periods or unerscores")
+        exit(1)
+
+    confs = choose(argv[1])
+
+    if no_configs(confs):
+        print("no matching configs found")
+        exit(2)
+
+    if multiple_configs(confs):
+        print("multiple configs match, be more specific")
+        exit(3)
+
+    conf = confs[0]
+    print(f"using {conf}")
+    set_link(conf)
+    start()
+

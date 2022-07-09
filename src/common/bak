@@ -1,0 +1,26 @@
+#!/bin/bash
+! [[ -e "$1" ]] && echo "doesn't exist: $1" && exit 1;
+
+if [[ -f "$1"  ]]; then
+  cp --verbose $1{,.bak};
+  exit 0;
+fi
+
+if [[ -d "$1"  ]]; then
+  if [[ -d "${1}.bak" ]]; then
+    echo "already exists, using: rsync --archive ${1}/ ${1}.bak/";
+    rsync --archive "${1}/" "${1}.bak/";
+    echo done;
+    exit 0;
+  else
+    [[ -e "${1}.bak" ]] \
+      && echo "already exists, but is not a directory: ${1}.bak" \
+      && exit 3;
+    cp --verbose --archive $1{,.bak};
+    exit 0;
+  fi
+fi
+
+echo "source is not a file or directory";
+exit 2;
+

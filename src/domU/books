@@ -1,0 +1,9 @@
+#!/bin/bash
+
+function relpath() {
+  find "${HOME}/books" -type f \
+    | sed 's/.*books\///g' \
+    | launcher
+}
+
+open "${HOME}/books/`relpath`"

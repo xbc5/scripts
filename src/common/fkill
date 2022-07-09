@@ -1,0 +1,3 @@
+#!/bin/bash
+process="`ps x -o pid,%cpu,%mem,cmd | fzf --preview-window=:nowrap | awk '{ print $1 }'`"
+[[ -n "$process" ]] && kill -9 "$process"

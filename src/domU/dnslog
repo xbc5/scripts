@@ -1,0 +1,81 @@
+#!/bin/bash
+
+CONF_PATH='/etc/dnsmasq.conf';
+SVC_NAME='dnsmasq';
+ON_PAT='s/^#log-queries$/log-queries/';  # turn logging on
+OFF_PAT='s/^log-queries$/#log-queries/'; # turn logging off
+
+SAVE_DIR="/usr/local/dnslog";
+SAVE_FILE_NAME="dnslog.log";
+SAVE_FILE="${SAVE_DIR}/${SAVE_FILE_NAME}";
+TMP_DIR="/tmp"
+TMP_FILE="${TMP_DIR}/${SAVE_FILE_NAME}";
+
+function __help() {
+  echo -e "Usage: $(basename $0) [OPTION]";
+  echo -e "Get all visited domains as a unique, ordered list.";
+  echo "";
+  echo -e "Optional:";
+  echo -e "  -g, --get, get, <none> \t: a set of all queries, ordered by frequency.";
+  echo -e "  -f, --follow, follow \t\t: follow queries as they happen.";
+  echo -e "  -s, --start, start \t\t: enable logging.";
+  echo -e "  -x, --stop, stop \t\t: disable logging.";
+  echo -e "  -h, --help, help \t\t: this help menu.";
+  echo "";
+}
+
+case "$1" in
+  ""|"get"|"--get"|"-g")
+    sudo journalctl -b -u dnsmasq \
+      | grep query \
+      | cut -d ' ' -f 7 \
+      | sort \
+      | uniq -c \
+      | sed 's/^ *//g' \
+      | sort -n;
+    ;;
+  "follow"|"--follow"|"-f")
+    sudo journalctl --follow --boot --unit dnsmasq --grep query \
+      | cut -d ' ' -f 7
+    ;;
+  "start"|"--start"|"-s")
+    sudo sed -i "$ON_PAT" "$CONF_PATH";
+    sudo systemctl restart "$SVC_NAME";
+    ;;
+  "stop"|"--stop"|"-x")
+    sudo sed -i "$OFF_PAT" "$CONF_PATH";
+    sudo systemctl restart "$SVC_NAME";
+    ;;
+  "save"|"--save"|"-w")
+    [[ `whoami` != "root" ]] && echo "must run as root" && exit 2;
+    
+    ! [[ -d "$SAVE_DIR" ]] && mkdir --parents "$SAVE_DIR";
+
+    [[ -f "$SAVE_FILE" ]] && cat "$SAVE_FILE" > "$TMP_FILE";
+
+    journalctl -b -u dnsmasq \
+      | grep query \
+      | cut -d ' ' -f 7 \
+      >> "$TMP_FILE";
+
+    cat "$TMP_FILE" \
+      | sort \
+      | uniq \
+      > "$SAVE_FILE";
+
+    shred -un 5 $TMP_FILE;
+    ;;
+  "--edit"|"-e"|"edit")
+    sudo vim "${SAVE_FILE}";
+    ;;
+  "--view"|"-v"|"view")
+    sudo less "${SAVE_FILE}";
+    ;;
+  "--help"|"-h"|"help")
+    __help;
+    ;;
+  *)
+    echo -e "Invalid option: '$1'\n";
+    __help;
+    ;;
+esac

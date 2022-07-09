@@ -1,0 +1,52 @@
+#!/bin/bash
+
+# You must set this environment variable.
+#  each target is delineated with a ; -- foo;bar;baz
+#  each segment is delineated with a : -- path:search_depth (X for infinite)
+# EXAMPLE: export FUZZY_OPEN_TARGETS="/etc:X;${HOME}/foo:1"
+#  /etc is searched with an infinite depth
+#  ~/foo is searched with a depth of 1 ( use $HOME, not ~ )
+
+[[ -z "$FUZZY_OPEN_TARGETS" ]] && {
+  echo "you must set the FUZZY_OPEN_TARGETS environment variable"
+  exit 2
+}
+
+function file_picker() {
+  printf '%s\n' "$@" | sort | fzf
+}
+
+function open_file() {
+  [[ -n "$1" ]] && open "$1"  # prevent "cannot open ''" messages when cancelling
+}
+
+
+function find_files() {
+  # $1 path; $2 depth
+  IFS=$'\n'
+  [[ "${2^^}" == "X" ]] \
+    && find "$1" -type f 2>/dev/null \
+    || find "$1" -maxdepth "$2" -type f 2>/dev/null  # ignore "permission denied" errors
+  unset IFS
+}
+
+# get discrete path:depth pairs
+IFS=';'
+read -ra targets <<< "$FUZZY_OPEN_TARGETS"
+
+
+files=()
+for target in ${targets[@]}; do
+  # split path and depth
+  IFS=':'
+  read -ra segments <<< "$target"
+  (( "${#segments[@]}" == 2 )) || { echo targets must have exactly 2 segments; exit 1; }
+  path="${segments[0]}"
+  depth="${segments[1]}"
+  
+  # now build a list
+  files+=(`find_files "$path" "$depth"`)
+  
+done
+
+open_file "`file_picker ${files[@]}`"

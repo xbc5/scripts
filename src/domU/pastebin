@@ -1,0 +1,59 @@
+#!/bin/bash
+
+# paste to several pastebins.
+# $1 is either a target or a path. If $1 s a target, $2 is a path.
+# If no target is provided (only a path) then default to termbin
+# outputs control URLS to /tmp/paste/`timestamp`.paste (if there is one).
+
+timestamp=`date +%Y-%M-%d--%T`;
+out_dir="/tmp/pastebin";
+out_file="${out_dir}/${timestamp}.paste";
+
+[[ `whoami` == "root" ]]\
+  && echo "do not run this as root"\
+  && exit 1;
+
+(( ${#@} == 0 ))\
+  && echo "you must provide at minimum an input file"\
+  && exit 2;
+
+__is_file() {
+  ! [[ -f "$1" ]]\
+    && echo "not a valid input file: $1"\
+    && exit 3;
+}
+
+function __copy() {
+  echo "$1" | xclip -selection clipboard;
+  echo "$1 copied to clipboard!";
+}
+
+__bpaste() {
+  cat "$1" | curl --tlsv1.3 --silent -X POST https://bpaste.net/curl -F 'raw=<-' > $out_file;
+
+  if [[ $? == 0 ]]; then
+    local paste_url=`cat $out_file \
+      | grep "Paste URL" \
+      | sed 's/Paste URL: *//g'`
+      
+      __copy "$paste_url";
+  fi
+}
+
+__termbin() {
+  local paste_url=`cat "$1" | nc termbin.com 9999 | sed 's/\x0//'`;  # Strip null byte too.
+  __copy "$paste_url";
+}
+
+mkdir $out_dir 2>/dev/null;
+
+case "$1" in
+  "bpaste")
+    __is_file "$2";
+    __bpaste "$2";
+  ;;
+  *)
+    __is_file "$1"; # $1 is the URL because no target.
+    __termbin "$1";
+  ;;
+esac

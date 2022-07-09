@@ -1,0 +1,26 @@
+#!/bin/bash
+# The IDE environment variable can also contain params: IDE="codium --log=debug".
+
+[[ -z "$IDE" ]] && {
+  echo 'You must set the IDE environment variable -- e.g. export IDE="codium"';
+  exit 1
+}
+
+[[ -z "$DEV_DIRS" ]] && {
+  echo 'You must set the DEV_DIRS environment variable -- e.g. export DEV_DIRS="/foo:/bar"'
+  exit 2
+}
+
+function search() {
+  # find all dirs with .git children, return parent path: echo {//}
+  IFS=":"
+  fd -t d --hidden --no-ignore '.git$' $DEV_DIRS --exec echo {//}
+}
+
+function detach() {
+  nohup $@ > /dev/null 2>&1 &
+}
+
+target="`search | fzf --height=10`"
+
+[[ -n "$target" ]] && detach "$IDE" "$target"  # prevent errors on cancel

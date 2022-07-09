@@ -1,0 +1,21 @@
+#!/bin/bash
+
+function parse() {
+  # $1 is maxdepth for find -- use it to isolate perm notes
+  [[ -n "$1" ]] \
+    && find "${HOME}/org" -maxdepth "$1" -name '*.org' -type f -exec cat '{}' \; \
+    || find "${HOME}/org" -name '*.org' -type f -exec cat '{}' \;
+}
+
+function count() {
+  wc --lines --words --chars
+}
+
+function format() {
+  # $1 is the heading
+  echo -e "\n${1}:"
+  awk '{print "  lines:\t" $1 "\n  words:\t" $2 "\n  chars:\t" $3}'
+}
+
+parse | count | format "PERM + BIB NOTES"
+parse 1 | count | format "PERM NOTES"

@@ -1,0 +1,11 @@
+#!/bin/bash
+conf_dir="${HOME}/.config/kitty/sessions"
+mkdir --parents "$conf_dir" > /dev/null 2>&1
+
+if [[ -z "$1" ]]; then
+  path="${conf_dir}/`ls $conf_dir | launcher`"
+else
+  path="${conf_dir}/$1"
+fi
+
+[[ -f "$path" ]] && kitty --session="$path"

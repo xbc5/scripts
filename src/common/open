@@ -1,0 +1,67 @@
+#!/bin/bash
+
+[[ -f "$1" ]] || ( echo "file doesn't exist: '$1'"; exit 1 )
+
+function mime_type() {
+   file --mime-type "$1" | cut -d ':' -f2 | sed 's/ *//g';
+}
+
+function detach() {
+  nohup $@ > /dev/null 2>&1 &
+}
+
+function get_extension() {
+  echo "${1##*.}"
+}
+
+function open_from_extension() {
+  local extension="`get_extension $1`"
+  case "$extension" in
+    org)
+      detach emacs "$1"
+    ;;
+    *)
+      vim "$1"
+    ;;
+  esac
+}
+
+function text_editor() {
+    # a helper to save you some logic in the main switch
+    # defaults to vim, and will detach GUI apps
+    # $1: path; $2: editor -- $2 is optional, so use this order.
+    case "$2" in
+      "vim"|"")
+        vim "$1" # default
+        ;;
+      "code"|"codium")
+        detach "$2" "$1"
+        ;;
+      *)
+        echo "unknown editor: $2"
+      ;;
+    esac
+}
+
+t=`mime_type "$1"`; 
+case "$t" in
+  *pdf|*epub*)
+    detach zathura "$1"
+    ;;
+  *shellscript)
+    vim "$1"
+    ;;
+  text/plain)
+    open_from_extension "$1"
+    ;;
+  text/x-python)
+    text_editor "$1" "$PYTHON_EDITOR"
+    ;;
+  image*)
+    detach eog "$1"
+    ;;
+  *)
+    echo "unhandled type '$t' for '$1'";
+    exit 2;
+    ;;
+esac
