@@ -1,7 +1,0 @@
-#!/bin/bash
-man --apropos . \
-  | dmenu -l 30 \
-  | awk '{print $1}' \
-  | xargs --no-run-if-empty man -troff-device \
-  | ps2pdf - - \
-  | zathura -
