@@ -1,0 +1,16 @@
+#!/bin/bash
+domain=`focused-domain`
+
+function _qrun() {
+  qvm-run $@ 'kitty-session'
+}
+
+case "$domain" in
+  dom0|'')
+    d=`pick-domain`
+    [[ -n "$d" ]] && _qrun "$d"
+    ;;
+  *)
+    _qrun "$domain"
+    ;;
+esac

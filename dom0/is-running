@@ -1,0 +1,9 @@
+#!/bin/bash
+qvm-check --running --quiet $1 >/dev/null 2>&1;
+
+ec=$?
+if [[ "$2" == "bool" ]]; then
+  (( $ec == 0 )) && echo true || echo false;
+fi
+
+exit $ec; # be explicit, otherwise it's always 0

@@ -1,0 +1,6 @@
+#!/bin/bash
+if [[ "$1" == "dom0" ]]; then
+  sudo shutdown -h now
+else
+  qvm-shutdown "$1"
+fi

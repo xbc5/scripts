@@ -1,0 +1,2 @@
+#!/bin/bash
+qvm-run --user root --autostart "$1" 'xfce4-terminal' # TODO: use config file for terminal

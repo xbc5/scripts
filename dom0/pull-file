@@ -1,0 +1,41 @@
+#!/bin/bash
+## get [vm_name] [input_file] [[output_file]]
+## This function will retrieve a file from the specified VM and either
+## place it in a default directory - or place it in an explicitly specified directory.
+
+vm="${1}"	# VM name.
+in_uri="${2}"	# Input file; the file in the VM.
+
+# If the correct parameters are not supplied then warn.
+if [[ "${1}" == "" || "${2}" == "" ]]; then
+  echo "pull [vm_name] [in_uri] [[out_uri]]";
+  (exit 1);
+fi
+
+echo pulling $2 from ${1}..
+
+# If an output URI was not specified then use a default directory.
+if [[ "${3}" == "" ]]; then
+  out_uri="${HOME}/received"
+  
+  # Create the default directory if it doesn't exist.
+  if [[ ! -d  "${out_uri}" ]]; then
+          mkdir "${out_uri}"
+  fi
+
+  # Concatenate the input file name to the default output directory.
+  out_uri="${out_uri}/$(basename ${in_uri})"
+
+# Else use the supplied value.
+else
+  out_uri=${3}
+fi
+
+# Exit function if the output file already exists.
+if [[ -f "${out_uri}" ]]; then
+  echo "${out_uri}: already exists in filesystem"
+  (exit 2)
+else
+  # The magic happens here.
+  sudo qvm-run --pass-io "${vm}" "cat ${in_uri}" > "${out_uri}"
+fi

@@ -1,0 +1,2 @@
+#!/bin/bash
+xprop | grep --color -E '^WM_CLASS|^WM_WINDOW_ROLE|^WM_NAME|^WM_INSTANCE'

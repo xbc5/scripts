@@ -1,0 +1,87 @@
+#!/bin/bash
+
+[[ `whoami` == "root" ]] && echo "don't run as root" && exit 1;
+
+source qsync.conf
+
+! [[ -e $qsync_conf_dir ]] && sudo mkdir $qsync_conf_dir;
+
+function __preconditions() {
+  local confs="$1";
+  
+  if [[ -z $confs ]]; then
+    echo "__preconditions expects an arg";
+    exit 2;
+  fi
+
+  # check configs
+  for conf in ${confs[@]}; do
+    source "$conf";
+    
+    # check $domain is set
+    if [[ -z $domain ]]; then
+      echo "the target domain must be set for '$conf'";
+      local err=true;
+    fi
+ 
+    # check $domain is set
+    vm-exists $domain
+    if [[ $? != 0 ]]; then
+      echo "the target domain '$domain' defined in '$conf' doesn't exist";
+      local err=true;
+    fi
+    
+    # check run_jobs() is set
+    if [[ `type -t run_jobs` != "function" ]]; then
+      echo "you must specify a run_jobs hook function for '$conf'";
+      local err=true;
+    fi
+    
+    # unset so that the next sourcing can be null checked
+    unset run_jobs;
+    unset domain; 
+  done
+  
+  if [[ $err == true ]]; then
+    echo "precondition checks failed";
+    exit 1;
+  fi
+}
+
+function __sync() {
+  local confs="${qsync_conf_dir}/*";
+  __preconditions $confs
+  
+  updates_proxy="updates-proxy"; # TODO: move to config
+  
+  # if already running, don't shut updates_proxy down at function end.
+  is-running $updates_proxy && shutdown_fw=false || shutdown_fw=true;
+  start-vm $updates_proxy; # TODO: determine if fw is /needed/ by jobs
+
+  for conf in ${confs[@]}; do
+    source "$conf";
+    is-running "$domain";
+    [[ $? == 0 ]] && shutdown_domain=false || shutdown_domain=true;
+
+    start-vm "$domain";
+    run_jobs;
+
+    [[ $shutdown_domain == true ]] && shutdown-vm "$domain" &
+  done
+
+  [[ $shutdown_fw == true ]] && shutdown-vm "$updates_proxy" &
+  
+}
+
+function __help() {
+  echo "help";
+}
+
+case $1 in
+  "--help"|"-h"|"help")
+    __help;
+    ;;
+  *)
+    __sync $@;
+    ;;
+esac

@@ -1,0 +1,30 @@
+#!/bin/bash
+
+function __help() {
+cat <<EOF
+Options: [create|c]|[edit|e] [FILENAME]
+EOF
+}
+
+[[ -z "$EDITOR" ]] && { echo "you must set EDITOR first"; exit 1; }
+[[ -z "$2" ]] && { echo -e "you must provide a file name.\n"; __help; exit 2; }
+
+cd "$(realpath `dirname $0`)"
+
+case "$1" in
+  create|c)
+    [[ -f "$2" ]] && { echo "file already exists: $2"; exit 3; }
+    echo -e '#!/bin/bash\n' | sudo tee "$2" >/dev/null
+    sudo chown root:root "$2"
+    sudo chmod 755 "$2"
+    sudo "$EDITOR" "$2"
+    ;;
+  edit|e)
+    [[ -f "$2" ]] || { echo "file doesn't exists, create it first."; exit 4; }
+    sudo "$EDITOR" "$2"
+    ;;
+  *)
+    echo -e "Invalid option: '$1'.\n"
+    __help
+
+esac

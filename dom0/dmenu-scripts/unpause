@@ -1,0 +1,2 @@
+#!/bin/bash
+qvm-unpause $1

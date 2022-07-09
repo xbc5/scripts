@@ -1,0 +1,96 @@
+#!/usr/bin/python3
+
+import json
+from json import JSONDecodeError
+import subprocess
+import re
+from os.path import join, isdir
+from getpass import getuser
+
+
+def match_remote(pattern):
+    # get only matching items
+    def _(item):
+        # is valid host
+        return True if re.match(pattern, item) else None
+    return _
+
+def clean_ovpn_directive(item):
+    # get IP from: remote XXX.XXX.XXX.XXX YYYY
+    return item.split(' ')[1].strip()
+
+def pull(domu, target, match_directive, get_host):
+    command=r"grep -hrE '^remote' {}".format(target)
+    output = subprocess.check_output(
+        "qvm-run --pass-io {} \'{}\'".format(domu, command),
+        shell=True
+    )
+    decoded = output.decode("utf=8")
+    delineated = decoded.split("\n")
+    return sorted([get_host(l) for l in delineated if match_directive(l)])
+
+
+def msg(msg_type):
+    colour = {
+                'reset': '\033[0m', # reset
+                'info': '\033[0m', # reset
+                'error': '\033[31m', # red
+                'success': '\033[33m', # green
+            }
+
+    def _(msg):
+        print("{}{}{}".format(colour[msg_type], msg, colour['reset']))
+    
+    return _
+
+def get_config(print_error=msg("error")):
+    with open("/etc/scripts/vpn/pull-hosts.json", "r") as f:
+        try:
+            return json.load(f)
+        except JSONDecodeError as e:
+            print_error("The config file is invalid JSON")
+            raise e
+
+def write_file(values, file_path):
+    with open(file_path, "w+") as f:
+        f.write("\n".join(values))
+        f.write("\n")
+
+def do(pull, domu, target, descrip, out_file, match_directive, msg_handler, write_file):
+    values = pull(
+            domu=domu,
+            target=target,
+            match_directive=match_directive,
+            get_host=clean_ovpn_directive)
+
+    write_file(values, out_file)
+
+    message = "{}: matched {} hosts for {}".format(domu, len(values), descrip)
+    if len(values) == 0:
+        msg_handler("error")(message)
+    else:
+        msg_handler("info")(message)
+
+conf = get_config()
+
+# make output dir
+if not isdir(conf["dom0_out_root"]):
+    subprocess.check_call([
+            "sudo", "mkdir", "--parents", conf["dom0_out_root"]
+        ])
+
+    uname_group = "{}:{}".format(getuser(), getuser())
+    subprocess.check_call([
+        "sudo", "chown", uname_group, conf["dom0_out_root"]
+        ])
+
+for job in conf["jobs"]:
+    do(pull=pull,
+        domu=job["domu"],
+        target=join(conf["domu_vpn_root"], job["relative_dir"]),
+        descrip=job["description"],
+        out_file=join(conf["dom0_out_root"], job["out_file_name"]),
+        match_directive=match_remote(job["validation_regex"]),
+        msg_handler=msg,
+        write_file=write_file)
+

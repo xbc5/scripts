@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "backing up user installed packages";
+qvm-run --user root --pass-io $1 'dnf repoquery --userinstalled --queryformat %{name} > /home/user/userinstalled.txt';

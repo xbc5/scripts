@@ -1,0 +1,11 @@
+#!/bin/bash
+
+desktop_files=(
+  "qrexec-policy-agent.desktop"
+  "qubes-screen-layout-watches.desktop"
+  "qvm-start-gui.desktop"
+)
+
+for f in "${desktop_files[@]}"; do
+  dex-autostart "/etc/xdg/autostart/$f"
+done

@@ -1,0 +1,38 @@
+#!/bin/bash
+
+# Backup dom0 files. Gzip them, and place it in the backup directory. It also shreds the old archive, and generates a checksum.
+
+domain="dom0";
+source backup.conf;
+
+perm_file="${out_dir}/${domain}.tar.gz";
+tmp_file="${perm_file}.tmp";
+echo "pulling backup from ${domain}..";
+
+source "${conf_dir}/${domain}";
+if [[ $? != 0 ]]; then
+  echo "unable to source ${domain} config";
+  exit 1;
+fi
+
+(
+  # TODO: make me sudo.
+  tar -czf $tmp_file ${files[*]}
+)
+[[ $? != 0 ]] && exit 3;
+
+if ! [[ `file --brief --mime $tmp_file` == *"gzip"* ]]; then
+  echo "corrupt backup!";
+  echo "shredding it..";
+  quiet-shred $tmp_file
+  exit 2;
+fi
+
+echo "shredding the old archive..";
+quiet-shred $perm_file;
+mv $tmp_file $perm_file;
+
+echo "generating checksum..";
+sha1sum $perm_file > "${perm_file}.sha1sum";
+echo "";
+

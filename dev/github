@@ -1,0 +1,93 @@
+#!/bin/bash
+
+set -e
+
+function delete_all_labels() {
+  read -p "WARN: this will delete all labels -- continue? [y/N]: " answer
+  local a="${answer^^}"
+  [[ "$a" != "Y" && "$a" != "YES" ]] && { echo "No changes made"; exit; }
+  mapfile -t labels < <(gh label list --json name --jq '.[].name')
+  for l in "${labels[@]}"; do gh label delete "$l" --confirm; done
+}
+
+function create_label() {
+  gh label create "$1" --color "$2" --description "$3" --force
+}
+
+function create_ctx_label() {
+  # these are repo specific labels
+  local ctx="0052CC"  # provides context
+  create_label "$1" "$ctx" "$2"
+}
+
+function create_default_labels() {
+  local type="0E8A16" # feat, refactor, fix etc
+  local critical="d73a4a" # bug etc
+  local warn="e4e669" # possibly bad
+  local meh="555555" # ignore me, dupe etc
+  local general="ffffff" # question, research etc
+
+  create_label "doc" "$type" "Documentation"
+  create_label "feat" "$type" "A new feature"
+  create_label "test" "$type" "Creates, fixes, or updates tests"
+  create_label "refactor" "$type" "Source changes that are not a fix, nor a feature"
+
+  create_label "bug" "$critical" "Something that's broken"
+  create_label "security" "$critical" "Concerns security"
+
+  create_label "invalid" "$warn" "Something doesn't seem right"
+
+  create_label "wont fix" "$meh" "It's a feature, not a bug"
+
+  create_label "question" "$general" "An enquiry"
+  create_label "investigate" "$general" "Something that requires study"
+  create_label "bump" "$general" "A version upgrade"
+}
+
+function display_help() {
+  cat <<EOF
+Usage: `basename $0` TARGET COMMAND [ARGS]...
+
+  TARGET
+    label,l             : a GitHub label
+
+  COMMAND for "label"
+    delete,d            : delete ALL labels for repo
+    ctx,c               : create a context label (blue)
+    init,i              : delete ALL labels, and load default labels
+
+EOF
+}
+
+function unknown_option() {
+  tput setaf 9
+  echo -e "\nUnknown option: '$1'\n"
+  tput sgr0
+  display_help
+}
+
+function label() {
+  case "$1" in
+    delete|d)
+      delete_all_labels
+      ;;
+    ctx|c)
+      create_ctx_label "$2" "$3"
+      ;;
+    init|i)
+      delete_all_labels
+      create_default_labels
+      ;;
+    *)
+      unknown_option
+  esac
+}
+
+case "$1" in
+  label|l)
+    label "$2" "$3" $4"
+    ;;
+  *)
+    unknown_option
+    ;;
+esac

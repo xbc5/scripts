@@ -1,0 +1,55 @@
+#!/bin/bash
+# $1: app type (e.g. terminal); $2: domain
+
+
+APP="$1"
+DOMAIN="$2"
+USER="$3"
+
+
+function _run_domu() {
+    [[ "$3" == "root" ]] && {
+      qvm-run --user root "$1" "$2"
+      return
+    }
+    qvm-run "$1" "$2"
+}
+
+
+function _default_domain(){
+  [[ -z "$2" ]] && echo "$1" || echo "$2"
+}
+
+
+# these have default domains, you MUST exit after each case.
+# this CANNOT have a default case. These match only apps that
+# have a specific domain. The rest falls through to the next
+# switch
+case "$APP" in
+  matrix)
+    domain=`_default_domain "matrix" "$DOMAIN"`
+    _run_domu "$domain" `appfor "matrix"` "$USER"
+    exit
+    ;;
+  daily-browser|youtube)
+    domain=`_default_domain "untrusted" "$DOMAIN"`
+    _run_domu "$domain" "`appfor 'daily-browser' $domain`" "$USER"
+    exit
+    ;;
+esac
+
+
+# these only run if a default domain isn't found in the switch above.
+case "$DOMAIN" in
+  dom0)
+    $(`appfor "$APP" "dom0"`)
+    ;;
+  *)
+    default_app="`appfor $APP $DOMAIN`"
+
+    # try getting a default, else just run it directly
+    [[ -n "$default_app" ]] \
+      && _run_domu "$DOMAIN" "$default_app" "$USER" \
+      || _run_domu "$DOMAIN" "$APP" "$USER"
+    ;;
+esac

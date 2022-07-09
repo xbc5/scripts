@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Provide a single VM to pull backups from. It gzips them, and streams them to a target out file. Lists of files to backup should be placed in a file under ~/.config/backup, where each file is named after their domain target, and contains an array of file paths called 'files'.
+
+vm=$1;
+source backup.conf;
+
+out_dir="${HOME}/.backup"
+remote_uri="/home/user/.backup/${vm}.tar.gz";
+perm_file="${out_dir}/`basename $remote_uri`"; # reuse the archive name
+
+echo "pulling backup from ${vm}..";
+
+vm-exists $vm;
+if [[ $? -ne 0 ]]; then
+  echo "'$vm' doesn't exist!";
+  exit 1;
+fi
+
+source "${conf_dir}/${vm}" || echo "unable to source ${vm} config";
+
+if [[ `type -t pre_hook` == "function" ]]; then
+  pre_hook $vm; # hooks are optional
+  [[ $? != 0 ]] && echo "pre-hook failed" && exit 3;
+fi
+
+tmp_file="${perm_file}.tmp";
+
+qvm-run --user root --pass-io $vm "tar -czf - ${files[*]} | cat" > $tmp_file || exit 3;
+
+if ! [[ `file --brief --mime $tmp_file` == *"gzip"* ]]; then
+  echo "corrupt backup!";
+  echo "shredding it..";
+  quiet-shred $tmp_file
+  exit 2;
+fi
+
+echo "shredding the old archive..";
+quiet-shred $perm_file;
+mv $tmp_file $perm_file;
+
+echo "generating checksum..";
+sha1sum $perm_file > "${perm_file}.sha1sum";
+echo "";
+
+if [[ `type -t post_hook` == "function" ]]; then
+  post_hook $vm; # hooks are optional
+  [[ $? != 0 ]] && echo "post-hook failed" && exit 4;
+fi

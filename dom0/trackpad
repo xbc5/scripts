@@ -1,0 +1,9 @@
+#!/bin/bash
+
+id=`xinput list --id-only 'Synaptics tm2964-001'`
+
+case "$1" in
+  disable|off) xinput disable "${id}";;
+  enable|on) xinput enable "${id}";;
+  *) echo "args: enable or disable";;
+esac

@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# get domain prefs
+#  supply just a domain to get its prefs.
+#  supply a domain and an option to grep for it.
+#  supply a domain, option, and a value to set it.
+
+domain=$1
+option=$2
+name=$(basename $0)
+
+if ! [[ -z $domain ]]; then
+  if [[ -z $option ]]; then  # simple view, no option
+    qvm-prefs $domain;
+  else  # option given
+    values=${@:3};
+    if [[ ${#values} == 0 ]]; then  # no values
+      qvm-prefs $domain \
+        | grep $option \
+        | sed 's/ //g' \
+        | sed 's/\-/: /';
+    else  # values given, use them
+      qvm-prefs --set $domain $option ${values} && \
+        qvm-prefs $domain \
+        | grep -E "$option " \
+        | sed 's/ //g' \
+        | sed 's/\-/ => /';
+    fi
+  fi
+else
+  echo "you must provide a domain";
+  echo -e "\n  $name DOMAIN [OPTION] [VALUE]";
+  echo -e "\n  OPTION is any qvm-prefs option.";
+  echo -e "\n  Examples:";
+  echo -e "    $name DOMAIN\t\t\t: view all preferences for the domain.";
+  echo -e "    $name DOMAIN OPTION\t\t: grep for that option.";
+  echo -e "    $name DOMAIN OPTION VALUE\t: set that option.";
+  echo "";
+  (exit 1);
+fi

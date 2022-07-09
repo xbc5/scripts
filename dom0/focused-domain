@@ -1,0 +1,17 @@
+#!/bin/bash
+
+get_id() {
+    local id=$(xprop -root _NET_ACTIVE_WINDOW)
+    echo ${id##* } # extract id
+}
+
+get_vm() {
+    local id=$(get_id)
+    local vm=$(xprop -id $id | grep '_QUBES_VMNAME(STRING)')
+    local vm=${vm#*\"} # extract vmname
+    echo ${vm%\"*} # extract vmname
+}
+
+vm=`get_vm`
+
+[[ -n "$vm" ]] && echo "$vm" || echo "dom0"

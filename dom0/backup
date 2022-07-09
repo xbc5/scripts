@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# do pre/post push/pull hooks
+#  e.g. pre_pull for user instaleld packages etc.
+#  e.g. post_push to enable services etc.
+#  can be a simple array: pre_pull=(...commands...);
+# TODO: backup templates like foo => foo-bak
+
+if [[ `whoami` == "root" ]]; then
+  echo "don't run this as root";
+  exit 3;
+fi
+
+if ! [[ $PATH =~ "/usr/local/bin" ]]; then
+  echo "you must put /usr/local/bin in your path";
+  exit 4;
+fi
+
+source backup.conf
+
+function __help() {
+  echo -e "\nUsage:"; 
+  echo -e "  backup [Mode] [Target]";
+  echo -e "\nModes:";
+  echo -e "  pull \t\t\tretrieve backups";
+  echo -e "  push \t\t\trestore backups";
+  echo -e "\nTargets:";
+  echo -e "  valid targets \t$domains\n";
+  echo -e "  <blank> \t\ttarget all valid targets";
+}
+
+function __pull_vm() {
+  local vm=$1
+  
+  is-running $vm;
+  [[ $? == 0 ]] \
+    && local stop=false \
+    || local stop=true;
+  
+  start-vm $vm;
+  
+  pull-backup $vm; local ec=$?;
+
+  [[ $stop == true ]] \
+    && shutdown-vm $vm &
+  
+  return $ec;
+}
+
+function __pull_dom0() {
+  pull-dom0-backup;
+  return $?;
+}
+
+function __pull() {
+  [[ -z $@ ]] && local domains_=${domains[@]} || local domains_=$@
+
+  echo "pulling from: ${domains_[*]}..";
+  for domain in ${domains_[@]}; do
+    if [[ $domain == "dom0" ]];
+      then __pull_dom0;
+      else __pull_vm $domain;
+    fi
+    local ec=$?;
+    
+    [[ $ec != 0 ]] \
+      && echo "unable to pull ${domain} backup" \
+      && return $ec; # fail fast
+  done
+}
+
+function __edit() {
+  path="${conf_dir}/$1"
+  $EDITOR $path;
+}
+
+case $1 in
+  "pull")
+    __pull ${@:2}
+    ;;
+  "push")
+    echo "not implemented";
+    ;;
+  "edit")
+    __edit $2
+    ;;
+  "help")
+    __help $@
+    ;;
+  *)
+    echo "unknown option '$1'";
+    __help $@
+    ;;
+esac
+
+unset __help
+unset __pull
+

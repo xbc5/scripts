@@ -1,0 +1,4 @@
+#!/bin/bash
+qvm-shutdown --wait temp \
+  && qvm-shutdown --wait fw-temp \
+  && qvm-shutdown --wait vpn-temp

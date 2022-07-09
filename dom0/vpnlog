@@ -1,0 +1,6 @@
+#!/bin/bash
+[[ -z "$1" ]] && target="vpn" || target="$1"
+terminal="xfce4-terminal"
+qvm-run --user root "$target" "$terminal --command='journalctl -fu qubes-vpn-handler'"
+
+

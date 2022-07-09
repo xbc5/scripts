@@ -1,0 +1,214 @@
+#!/usr/bin/python3
+
+import json
+import subprocess
+from os.path import isfile, join
+from os import listdir
+from sys import argv
+from re import match
+
+
+def is_proto(proto):
+    return proto in ["tcp", "udp", "icmp"]
+
+
+def is_port(port):
+    try:
+        p = int(port)
+    except ValueError:
+        return False
+    return True if  p <= 65535 and p > 0 else False
+
+
+class FwBuilder:
+    def __init__(self, is_proto=is_proto, is_port=is_port):
+        self._command = ["qvm-firewall"]
+        self._is_proto = is_proto
+        self._is_port = is_port
+
+    def _assert_len(self, comp_fun):
+        assert comp_fun(len(self._command)), "invalid arg length"
+
+    def domu(self, name):
+        self._assert_len(lambda l: l == 1)
+        self._command.append(name)
+        return self
+    
+    def action(self, action):
+        assert action in ["add", "reset"], "'{}' is not a valid action".format(action)
+        self._assert_len(lambda l: l == 2)
+        self._command.append(action)
+        return self
+    
+    def policy(self, policy):
+        assert policy in ["accept", "drop"], "'{}' is not a valid policy".format(policy)
+        self._assert_len(lambda l: l == 3)
+        self._command.append(policy)
+        return self
+    
+    def dstports(self, ports):
+        self._assert_len(lambda l: l >= 4)
+        assert self._is_port(ports), "Invalid port '{}'".format(ports)
+        self._command.append("dstports={}".format(ports))
+        return self
+
+    def proto(self, proto):
+        self._assert_len(lambda l: l >= 4)
+        self._command.append("proto={}".format(proto))
+        assert self._is_proto(proto), "Invalid proto: {}".format(proto)
+        return self
+    
+    def dsthost(self, host):
+        self._assert_len(lambda l: l >= 4)
+        self._command.append("dsthost={}".format(host))
+        return self
+
+    def run(self):
+        if "reset" in self._command:
+            self._assert_len(lambda l: l == 3)
+            subprocess.check_call(self._command)
+            subprocess.check_call(["qvm-firewall", self._command[1], "del", "accept"]) # the default accept rule gets in the way
+        else:
+            self._assert_len(lambda l: l >= 4)
+            subprocess.check_call(self._command)
+
+
+def msg(msg_type):
+    colours = {
+            "reset": "\033[0m",     # reset
+            "info": "\033[0m",      # reset
+            "error": "\033[31m",    # red
+            "success": "\033[32m",  # green
+            }
+    def _(msg):
+        print(colours[msg_type], msg, colours["reset"])
+
+    return _
+
+
+def validate_args(args, msg=msg):
+    err = False
+    for arg in args:
+        if not isfile(conf_path(arg)):
+            err = True
+            msg("error")("'{}' is not a valid config file name".format(arg))
+    if err:
+        raise ValueError("Invalid configuration file names")
+
+def conf_dir():
+    return "/etc/scripts/fw"
+
+def conf_path(target, conf_dir=conf_dir):
+    return join(conf_dir(), "{}.json".format(target))
+
+def hosts_path(target):
+    return "/var/scripts/host-lists/{}".format(target)
+
+def get_conf(target):
+    with open(target, 'r') as f:
+        return json.load(f) 
+
+def take_egress(conf):
+    for egress in conf["egress"]:
+        yield egress
+
+def get_proto_ports(compound, is_proto=is_proto, is_port=is_port):
+    proto_port = compound.split(":")
+    assert proto_port and  len(proto_port) <= 2,\
+        "Invalid compound ports length: {}".format(compound)
+    
+    if len(proto_port) == 1:
+        proto = proto_port[0]
+        assert is_proto(proto), "Invalid protocol '{}'".format(proto)
+        return proto, None
+    else:
+        proto = proto_port[0]
+        port = proto_port[1]
+        assert is_proto(proto), "Invalid protocol '{}'".format(proto)
+        assert is_port(port), "Invalid port '{}'".format(port)
+        return proto, port
+        
+def set_host_and_ports(domu, hosts, ports, policy, get_proto_ports=get_proto_ports):
+    for host in hosts:
+        for composite in ports:
+            proto, port = get_proto_ports(composite)
+            fw = FwBuilder()\
+                    .domu(domu)\
+                    .action("add")\
+                    .policy(policy)\
+                    .proto(proto)\
+                    .dsthost(host)
+
+            if port:
+                fw.dstports(port).run()
+            else:
+                fw.run()
+
+def set_hosts_only(domu, hosts, policy):
+    for host in hosts:
+        FwBuilder()\
+                .domu(domu)\
+                .action("add")\
+                .policy(policy)\
+                .dsthost(host)\
+                .run()
+
+def set_ports_only(domu, ports, policy, get_proto_ports=get_proto_ports):
+    for composite in ports:
+        proto, port = get_proto_ports(composite)
+        fw = FwBuilder()\
+                .domu(domu)\
+                .action("add")\
+                .policy(policy)\
+                .proto(proto)
+
+        if port:
+            fw.dstports(port).run()
+        else:
+            fw.run()
+
+def get_hosts(name, get_path=hosts_path):
+    with open(hosts_path(name)) as f:
+        return [l.strip() for l in f.readlines()];
+
+def set_rule_group(domu, egress, set_host_and_ports, get_hosts=get_hosts):
+    hosts_file_name = egress.get("list", None)
+    ports = egress.get("ports", None)
+    policy = egress["policy"]
+
+    if hosts_file_name == None:
+        set_ports_only( domu=domu,
+                        ports=ports,
+                        policy=policy)
+    elif ports == None and hosts_file_name:
+        hosts = get_hosts(hosts_file_name)
+        set_hosts_only( domu=domu,
+                        hosts=hosts,
+                        policy=policy)
+    else:
+        hosts = get_hosts(hosts_file_name)
+        set_host_and_ports( domu=domu,
+                            hosts=hosts,
+                            ports=ports,
+                            policy=policy)
+
+def get_all_confs():
+    return [f.split(".")[0] for f in listdir(conf_dir()) if match(r"^.+\.json$", f)]
+
+args = argv[1:]
+
+if len(args) == 1 and args[0] == "all":
+    domus = get_all_confs()
+else:
+    validate_args(args=args, msg=msg)
+    domus = args
+
+for domu in domus:
+    msg("info")("Setting policies for the '{}' domu".format(domu))
+    egress_items = take_egress(get_conf(conf_path(domu)))
+    FwBuilder().domu(domu).action("reset").run()
+    for e in egress_items:
+        set_rule_group( domu=domu,
+                        egress=e,
+                        set_host_and_ports=set_host_and_ports)
+    subprocess.check_call(["qvm-firewall", domu, "add", "drop"]) # same with this

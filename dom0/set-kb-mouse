@@ -1,0 +1,4 @@
+#!/bin/bash
+xkbset exp mousekeys # sets it on permanently
+xkbset ma 50 20 20 35 300
+

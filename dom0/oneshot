@@ -1,0 +1,4 @@
+#!/bin/bash
+[[ -z "$1" ]] && echo "You must provide an app name to run" && exit 1
+qvm-run --dispvm=oneshot-template --service qubes.StartApp+$1
+

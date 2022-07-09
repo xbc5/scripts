@@ -1,0 +1,2 @@
+#!/bin/bash
+qvm-run "$1" 'xfce4-terminal' # TODO: use config file for terminal

@@ -1,0 +1,35 @@
+#!/bin/bash
+
+DOMAIN="$1"
+TARGET="$2"
+
+function strip() {
+  local patterns=("security=selinux" "autorelabel=[01]" "selinux=[01]" " *")
+  local result="$1";
+  for pat in "${patterns[@]}"; do
+    result=`echo $result | sed "s/${pat}//g"`
+  done
+  echo "$result"
+}
+
+PROPS=$(strip `qvm-prefs ${DOMAIN} kernelopts`);
+
+case "${TARGET}" in
+  enforce|enforcing)
+    qvm-prefs --set ${DOMAIN} kernelopts "$PROPS security=selinux selinux=1 enforcing=1"
+    ;;
+  permissive)
+    qvm-prefs --set ${DOMAIN} kernelopts "$PROPS security=selinux selinux=1 enforcing=0"
+    ;;
+  on)
+    qvm-prefs --set ${DOMAIN} kernelopts "$PROPS security=selinux selinux=1"
+    ;;
+  off)
+    qvm-prefs --set ${DOMAIN} kernelopts "$PROPS"
+    ;;
+  relabel)
+    qvm-prefs --set ${DOMAIN} kernelopts "$PROPS security=selinux selinux=1 enforcing=0 autorelabel=1"
+    ;;
+  *)
+    echo "error, must be: sel [DOMAIN] enforce|permissive|off|relabel"
+esac

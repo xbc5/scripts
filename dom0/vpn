@@ -1,0 +1,22 @@
+#!/bin/bash
+
+function country() {
+  #echo 'journalctl --boot --unit qubes-vpn-handler --grep "Peer Connection Initiated" | awk "{print $3}" | sed "s/[][]//g" | sed "s/\.protonvpn\.com//g" | sed "s/ / : /g"'
+  echo 'journalctl --boot --unit qubes-vpn-handler --grep "Peer Connection Initiated" | cut -d " " -f 1,2,3,11,12'
+}
+
+[[ -z "$2" ]] && domain='vpn' || domain="$2"
+
+case $1 in
+  "log"|"l")
+    qvm-run --user root "$domain" "xfce4-terminal --command 'journalctl --boot --follow --unit qubes-vpn-handler'"
+    ;;
+  "country"|"c"|"")
+    qvm-run --user root --pass-io "$domain" "`country`"
+    ;;
+  *)
+    qvm-run --user root --pass-io "$domain" "connect-vpn $1"
+    ;;
+esac
+
+#!/bin/bash

@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+import json, argparse, sys
+
+
+def main():
+    with open("/etc/scripts/default-apps.json") as f:
+        json_data = json.load(f)
+
+    
+    roles = list(json_data.keys())
+    roles_str = ', '.join(sorted(roles))
+   
+
+    parser = argparse.ArgumentParser(description="Get default apps.")
+    parser.add_argument("--role", dest="role", type=str, help="one of: {}".format(roles_str))
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--class", dest="wm_class", default=False, action="store_true", help="get X WM_CLASS")
+    group.add_argument("--cmd", default=False, action="store_true", help="get a runnable command")
+    args = parser.parse_args()
+
+
+    err_keys = []
+    for k, v in json_data.items():
+        # ensure all keys are set
+        try:
+            v["cmd"]
+            v["class"]
+        except KeyError:
+            err_keys.append(k)
+
+
+    if err_keys:
+        _k = ', '.join(err_keys)
+        print("Config invalid, set 'cmd' and 'class' for '{}' apps.".format(_k), file=sys.stderr)
+        sys.exit(2)
+
+
+    # dump it all
+    if args.role is None:
+        print(json_data)
+        return
+
+
+    try:
+        app_data = json_data[args.role]
+    except KeyError:
+        # app role doesn't exist
+        print("Cannot find '{}', must be one of: '{}'".format(args.role, roles_str), file=sys.stderr)
+        sys.exit(1)
+
+
+    # cmd, class, or both (as json), but for a single app role.
+    if args.cmd:
+        print(app_data["cmd"])
+    elif args.wm_class:
+        print(app_data["class"])
+    else:
+        print(app_data)
+
+
+if __name__ == '__main__':
+    main()

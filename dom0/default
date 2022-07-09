@@ -1,0 +1,72 @@
+#!/bin/bash
+
+function pull_backup() {
+    local vm=$1;
+    local out_dir="${HOME}/.backup"
+    local remote_uri="/home/user/.backup/${vm}.tar.gz";
+    local perm_file="${out_dir}/`basename $remote_uri`"; # reuse the archive name
+
+    echo "pulling backup from ${vm}..";
+    
+    check_vm_exists $vm;
+    if [[ $? -ne 0 ]]; then
+      echo "'$vm' doesn't exist!";
+      return 1;
+    fi
+
+    local tmp_file="${perm_file}.tmp";
+    
+    files=(
+      "/home/user/.mozilla/firefox/default/user-overrides.js"
+      "/home/user/.mozilla/firefox/youtube/user-overrides.js"
+    )
+
+
+    # here you can tar (and gzip) directly through a stream:
+    qvm-run --pass-io $vm "tar -czf - ${files[*]} | cat" > $tmp_file
+    # Now you need to somehow pass a list of targets, and see if you can preserve permissions
+    #qvm-run --pass-io $vm "cat $remote_uri" > $tmp_file || return 1;
+   
+    if ! [[ `file --brief --mime $tmp_file` == *"gzip"* ]]; then
+      echo "corrupt backup!";
+      echo "shredding it..";
+      shred_quiet $tmp_file
+      return 1;
+    fi
+
+    echo "shredding the old archive..";
+    shred_quiet $perm_file;
+    mv $tmp_file $perm_file;
+
+    echo "generating checksum..";
+    sha1sum $perm_file > "${perm_file}.sha1sum";
+    echo "";
+}
+
+function pull() {
+  case $1 in
+    "backup")
+      vm=$2;
+      vms=(
+        "dev"
+        "untrusted"
+      )
+
+      if [[ -z $vm ]]; then
+        echo "pulling all backups..";
+        for vm in "${vms[@]}"; do
+          pull_backup $vm || return $?;
+        done
+      else
+        pull_backup $2 || return $?;
+      fi
+      
+      echo "backup complete!";
+      
+      ;;
+    *)
+      getFileFromVm $@
+      ;;
+  esac
+
+}

@@ -1,0 +1,6 @@
+#!/bin/bash
+[[ -z "$1" ]] \
+  && echo "`basename $0`: you must provide an argument" \
+  && exit 2;
+[[ "$1" == "dom0" ]] && exit 1; # qvm-check returns 0 for dom0
+qvm-check "$1" 2>/dev/null

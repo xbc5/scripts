@@ -1,0 +1,202 @@
+#!/bin/bash
+
+function __update_fedora() {
+  echo "updating $1..";
+  qvm-run --pass-io --no-gui --user root $1 'dnf update';
+}
+
+function __install_fedora() {
+  packages=$2;
+  template=$1;
+  echo "installing '$packages' on $template..";
+  qvm-run --pass-io --no-gui --user root $template "dnf install $packages";
+}
+
+function __update_dom0() {
+  echo "updating dom0..";
+  sudo qubes-dom0-update -y;
+}
+
+function __install_dom0 {
+  echo "installing '$@' in dom0..";
+  sudo qubes-dom0-update -y $@;
+}
+
+function err() {
+  echo "$1";
+  exit $2;
+}
+
+function conditionally_shutdown() {
+  # pass $2 as bool: was target was initially running?
+  local was_running=$2;
+  local domu="$1";
+  [[ $was_running == false ]] \
+    && echo "shutting down $domu" \
+    && shutdown-vm "$domu";
+}
+
+function __upgrade_fedora() {
+  local ver="$2";
+  local domu="$1";
+
+  is-template $domu || err "'$domu' is not a template" 10;
+  [[ $ver =~ ^[0-9]+$ ]] || err "you must provide a fedora release version" 9;
+  
+  local target_running=`is-running "$domu" "bool"`;
+  
+  local clean="dnf clean all";
+  local upgrade="dnf --releasever=$ver --best --allowerasing distro-sync";
+  qvm-run --pass-io --no-gui --user root $domu "$clean && $upgrade && $clean";
+  
+  conditionally_shutdown $domu $target_running;
+}
+
+# TODO: get this programatically
+UPDATES_PROXY="updates-proxy";
+
+function __upgrade() {
+  local proxy_running=`is-running "$UPDATES_PROXY" "bool"`;
+  __upgrade_fedora $@;
+  conditionally_shutdown "$UPDATES_PROXY" $proxy_running
+}
+
+function __update() {
+  updates_proxy="updates-proxy";
+  templates=(
+    fedora
+    fedora-min
+    fedora-app
+  )
+
+  # if already running, don't shut updates_proxy down at function end.
+  qvm-check --running --quiet $updates_proxy && fw_running=true || fw_running=false
+  
+  case $1 in
+    "all"|"")
+      
+      for t in "${templates[@]}"; do
+        is-running "$1";
+        [[ $? == 0 ]] && running=true || running=false;
+        
+        __update_fedora "$t";
+        
+        [[ $running == false ]] && shutdown-vm $t &
+      done
+       
+      ;& # fall through to dom0 
+    
+    "dom0")
+      __update_dom0
+      ;;
+    
+    *)
+      if ! [[ `qvm-check --template --quiet $1 && echo true` ]]; then # if not a template
+        echo "'$1' is not a template or dom0";
+        return 1;
+      fi
+
+      is-running "$1";
+      [[ $? == 0 ]] && running=true || running=false;
+      
+      __update_fedora $1
+      
+      [[ $running == false ]] && shutdown-vm "$1" &
+      
+      ;;
+  esac
+  
+  [[ $fw_running == false ]] && shutdown-vm $updates_proxy
+}
+
+function __install() {
+  if [[ $# < 2 ]]; then
+    echo "Usage: install [target] [packages]";
+    echo "You must provide at least one target, and one package";
+    return 1;
+  fi
+  
+  updates_proxy="updates-proxy";
+  template=$1;
+  packages=${@:2};
+
+  # if already running, don't shut updates_proxy down at function end.
+  is-running $updates_proxy && fw_running=true || fw_running=false
+  
+  case $template in
+    "dom0")
+      __install_dom0 $packages
+      ;;
+    
+    "fedora"*)
+      if ! [[ `is-template $template && echo true` ]]; then
+        echo "'$template' is not a template";
+        return 1;
+      fi
+
+      is-running $template && running=true || running=false;
+      __install_fedora $template $packages;
+      [[ $running == false ]] && shutdown-vm $template;
+      
+      ;;
+    *)
+      echo "unknown target: '$vm'";
+      ;;
+  esac
+  
+  [[ $fw_running == false ]] && shutdown-vm $updates_proxy
+  
+}
+
+function __search_dom0() {
+  sudo qubes-dom0-update --action=search $1
+}
+
+function __reinstall_dom0() {
+  sudo qubes-dom0-update --action=reinstall $1
+}
+
+function __search() {
+  case $1 in
+    "dom0")
+      __search_dom0 ${@:2}
+      ;;
+    *)
+      echo "searching $1 not implemented";
+  esac
+}
+
+function __reinstall() {
+  case $1 in
+    "dom0")
+      __reinstall_dom0 $@
+      ;;
+    *)
+      echo "reinstalling for $1 not implemented";
+  esac
+}
+
+function __help() {
+  echo "help";
+}
+
+case $1 in
+  "update")
+    __update ${@:2};
+    ;;
+  "upgrade")
+    __upgrade ${@:2};
+    ;;
+  "install")
+    __install ${@:2};
+    ;;
+  "search")
+    __search ${@:2};
+    ;;
+  "reinstall")
+    __reinstall ${@:2};
+    ;;
+  *)
+    __help ${@:2};
+    ;;
+esac

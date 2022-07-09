@@ -1,0 +1,7 @@
+#!/bin/bash
+
+[[ -z "$1" ]] && domain="notes"
+[[ -z "$2" ]] && path='${HOME}/books'
+outfile="/var/scripts/books"
+
+qvm-run --pass-io "$domain" "find $path -type f -not -name *.sha1sum" > "$outfile"

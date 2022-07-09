@@ -1,0 +1,21 @@
+#!/bin/bash
+
+[[ "$1" == "--all" ]] && full=true || full=false
+
+function sd() {
+  qvm-shutdown --wait $@
+}
+
+function sdnet() {
+  [[ $full == true ]] && sd net && return $?
+  return 0  # allow pipe chain to continue
+}
+
+shutdown-temp \
+  && sd untrusted updates-proxy dev matrix irc browser \
+  && sd mfw \
+  && sd vpn \
+  && sd fw-vpn \
+  && sdnet \
+  && vpn dk \
+  && ff untrusted

@@ -1,0 +1,65 @@
+#!/bin/bash
+
+RESET="\e[0m"
+BOLD="\e[1m"
+RED="\e[0;31m"
+GREEN="\e[0;32m"
+
+function help_menu() {
+  echo -e "Usage `basename $0` [IP SEGMENT(s)|DOMU]";
+  echo -e "Get the domU that matches the given IP.";
+  echo -e "The given number should match against the highest segment.";
+  echo -e "";
+  echo -e "Examples:";
+  echo -e "  `basename $0` ${BOLD}41${RESET}         \t=> 10.137.0.${GREEN}41${RESET}";
+  echo -e "  `basename $0` ${BOLD}1.41${RESET}       \t=> 10.137.${GREEN}1.41${RESET}";
+  echo -e "  `basename $0` ${BOLD}138.1.41${RESET}   \t=> 10.${GREEN}138.1.41${RESET}";
+  echo -e "  `basename $0` all \t\t=> <list>";
+  echo -e "  `basename $0` my-domU \t=> <list>";
+  echo -e "  ";
+  echo -e "Parameters";
+  echo -e "  IP SEGMENT(S) \t: integers (0-255), separated by periods.";
+  echo -e "  DOMU \t\t\t: an existing domU name.";
+  echo -e "  --help \t\t: this help menu.";
+  echo -e "  ";
+}
+
+CLASS_B="^([0-9]{1,3}\.){2}[0-9]{1,3}$";
+CLASS_C="^[0-9]{1,3}\.[0-9]{1,3}$";
+CLASS_D="^[0-9]{1,3}$";
+
+function get() {
+  qvm-ls --format network --raw-data \
+    | cut -d "|" -f1,4 \
+    | grep -E "$1" \
+    | sed 's/|/: /';
+}
+
+function pretty_print() {
+  printf "%30s %15s\n" `get "$1" | sort`;
+}
+
+# use grep because the built-in regex doesn't support {1,3}
+if [[ `echo "$1" | grep -E "$CLASS_D"` ]]; then
+  get "10\.137\.0\.$1";
+elif [[ `echo "$1" | grep -E "$CLASS_C"` ]]; then
+  get "10\.137.$1";
+elif [[ `echo "$1" | grep -E "$CLASS_B"` ]]; then
+  get "10\.$1";
+elif [[ "$1" == "all" ]]; then
+  echo ""; # easier to see list
+  pretty_print "10\.";
+  echo ""; # easier to see list
+elif [[ "$1" == "--help" ]]; then
+  help_menu;
+else
+  is-domu "$1";
+  if (( $? == 0 )); then
+  echo ""; # easier to see list
+    pretty_print "^$1";
+    echo ""; # easier to see list
+  else
+    echo -e "${RED}'$1': not a domU or IP segment.${RESET}\n";
+    help_menu;
+  fi
+fi

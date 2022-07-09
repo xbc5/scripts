@@ -1,0 +1,11 @@
+#!/bin/bash
+src='${HOME}/projects/awesomewm/qubes/src'
+domain=dev
+awesome_dir="${HOME}/.config/awesome/"
+
+echo ignoring png files
+qvm-run $domain "cd $src && tar -cf /tmp/awesomerc.tar --exclude='.git' --exclude='.gitignore' --exclude='*.png' ."
+pull-file dev '/tmp/awesomerc.tar' "${awesome_dir}/awesomerc.tar"
+cd $awesome_dir
+tar xvf awesomerc.tar
+rm awesomerc.tar

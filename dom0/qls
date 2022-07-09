@@ -1,0 +1,24 @@
+#!/bin/bash
+
+# List vms.
+# Any args are grepped for -- so grep for VM names, vm colout, net vm etc,
+# When no args are passed, only running or transient VMs are displayed.
+# Args are Regex patterns, so spaces, and other regex patterns can be used to constrain results.
+
+function __help() {
+  echo -e "Usage: $(basename $0) [pattern]";
+  echo -e "\n  no pattern \t: display Running and Transient domains.";
+  echo -e "\n  with pattern \t: grep qvm-ls for pattern -- it could be";
+  echo -e "\t\t  state, domain name, net domain name etc.";
+}
+
+if [[ $1 == "--help" ]]; then
+  __help
+elif [[ ${#@} -eq 0 ]]; then
+  # No args.
+  qvm-ls | grep -E "Running|Transient";
+else
+  # Has args? Then grep for them.
+  pattern=$(IFS='|'; echo "${*}");
+  qvm-ls | grep --color -E "$pattern";
+fi

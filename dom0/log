@@ -1,0 +1,56 @@
+#!/bin/bash
+
+function view_log() {
+  [[ -z "$3" ]] \
+    && local pattern=false \
+    || local pattern="$3";
+
+  case "$2" in
+    "all"|"cat"|"")
+      [[ "$pattern" == false ]] \
+        && sudo cat "/var/log/xen/console/${1}" \
+            | less \
+        || sudo grep --color=always -E "$pattern" "/var/log/xen/console/${1}" \
+            | less --raw-control-chars; # keep grep colors
+      ;;
+    "tail"|"follow")
+      [[ "$pattern" == false ]] \
+        && sudo tail --follow --lines 100 "/var/log/xen/console/${1}" \
+            | grep --invert-match "audit:" \
+        || sudo tail --follow --lines 100 "/var/log/xen/console/${1}" \
+            | grep --invert-match "audit:" \
+            | grep --color=always -E "$pattern";
+      ;;
+    *)
+      echo "invalid directive: '$2'";
+      ;;
+  esac
+}
+
+function help_menu() {
+  echo -e "Usage `basename $0` [TARGET] [VIEW] [PATTERN]";
+  echo "";
+  echo -e "  [TARGET] \t\t : dom0 or a domU name.";
+  echo -e "  [VIEW] \t\t : how it's displayed -- 'all'|'cat' (cat => less),";
+  echo -e "  \t\t\t    or 'follow'|'tail' (for tail --follow)";
+  echo -e "  [PATTERN] \t\t : a case sensitive regex.";
+  echo -e "  --help \t\t : display this help menu.";
+  echo "";
+}
+
+[[ "$1" == "--help" ]] \
+  && help_menu \
+  && exit 0;
+
+is-domu "$1";
+(( $? == 0 )) && isdomu=true || isdomu=false;
+
+echo $isdomu
+if [[ $isdomu == true ]]; then
+  view_log "guest-${1}.log" "$2" "$3";
+elif [[ "$1" == "dom0" ]]; then
+  view_log "hypervisor.log" "$2" "$3";
+else
+  view_log "hypervisor.log";
+fi
+

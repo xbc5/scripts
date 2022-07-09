@@ -1,0 +1,21 @@
+#!/bin/bash
+
+case "$1" in
+  terminal)
+    [[ $2 == "dom0" ]] && echo "xfce4-terminal" || echo "kitty"
+    ;;
+  matrix)
+    echo element
+    ;;
+  daily-browser|firefox)
+    # TODO: use UTC time for all browsers 
+    echo 'firefox -P default'
+    ;;
+  youtube)
+    echo 'firefox -P youtube'
+    ;;
+  *)
+    echo 'args: $1: [terminal]; $2: domain' >&2
+    exit 1
+    ;;
+esac

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+domain="dev" # TODO: use config file
+focused=`focused-domain`
+[[ "$domain" == "$focused" ]] && qvm-run "$domain" 'PATH="${PATH}:/usr/scripts" docs'

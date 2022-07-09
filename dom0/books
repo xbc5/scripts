@@ -1,0 +1,16 @@
+#!/bin/bash
+
+qvm-run --user user `focused-domain` 'PATH="${PATH}:/usr/scripts" books'
+
+# an alternative script that pulls a book list as a text file first
+#function relpath() {
+#  cat /var/scripts/books \
+#    | sed 's/.*books\///g' \
+#    | dmenu -l 30 \
+#    | cat
+#}
+#
+#suffix="/books/`relpath`"
+#prefix='${HOME}'
+#
+#qvm-run notes "open ${prefix}${suffix}"

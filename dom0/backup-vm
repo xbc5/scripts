@@ -1,0 +1,35 @@
+#!/bin/bash
+#
+# $1: source vm
+# $2: [OPTIONAL] dst vm
+# 
+# A number is always affixed: foo-1
+# if no destination is provided, the source name is used
+#
+
+function err() {
+  echo "$1";
+  exit $2;
+}
+
+vm-exists "$1" || err "'$1': vm doesn't exist" 1;
+
+src="$1";
+! [[ -z "$2" ]] && dst="$2" || dst="${1}";
+
+function __clone() {
+  qvm-clone "$1" "$2";
+  vm-exists "$2" \
+    && echo "created '$2'" \
+    || echo "failed to create '$2'";
+}
+
+count=1;
+target="${dst}-$count";
+
+while `vm-exists "$target" "bool" == true`; do
+  target="${dst}-${count}"
+  ((count++));
+done
+
+__clone "$src" "$target";

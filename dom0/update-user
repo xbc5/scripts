@@ -1,0 +1,28 @@
+#!/bin/bash
+#update_user_vms=( untrusted dev );
+#domu_user="user";
+
+source update-user.conf
+
+function __update_user_vm() {
+  local vm=$1;
+  
+  if ! vm-exists $vm;
+    then echo "$vm: vm doesn't exist" && return 1;
+  fi
+  
+  is-running $vm && local shutdown=false || local shutdown=true;
+ 
+  qvm-run --autostart --user $domu_user --pass-io $vm '/usr/scripts/update-user';
+
+  [[ $shutdown == true ]] && shutdown-vm $vm;
+}
+
+
+if [[ ${#@} -eq 0 ]]; then
+  for vm in "${update_user_vms[@]}"; do
+    __update_user_vm $vm;
+  done
+else
+  __update_user_vm $1;
+fi

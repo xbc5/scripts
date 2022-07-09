@@ -1,0 +1,95 @@
+#!/bin/bash
+
+function pack() {
+  local domain="$1"
+  local repo="$2"
+  local name="$3"
+
+  local stash="/tmp/projects/${name}.tar" 
+  qvm-run "$domain" "mkdir --parents /tmp/projects" || exit
+
+  qvm-run "$domain" "cd $repo && \
+    tar -cf "$stash" \
+    --exclude='.git' \
+    --exclude='.gitignore' \
+    ." || exit
+
+  echo "$stash"
+}
+
+function get() {
+  local domain="$1"
+  local repo="$2"
+  local out="$3"
+  local name="$4"
+  
+  local stash="`pack $domain $repo $name`"
+  pull-file "$domain" "$stash" "${out}/${name}.tar"
+  cd "$out" \
+    && echo -e "\nFiles:" && tar xvf "${name}.tar" \
+    && rm -f "./${name}.tar"
+}
+
+function assert_root() {
+  (( `id -u` == 0 )) && return
+  echo "You must run this command as root"
+  exit 1 
+}
+
+function show_help() {
+  cat << EOF
+Usage: `basename $0` [COMMAND]... [TARGET]...
+
+  COMMAND:
+    pull        : Fetch the target project
+    clean       : rm -rf TARGET
+
+  TARGET:
+    salt        : Custom salt configurations
+
+EOF
+}
+
+function pull() {
+  case $1 in
+    salt)
+      assert_root
+      get "dev" "/home/user/projects/qubes/sys-config/src/salt" "/srv/user" "salt"
+      ;;
+    *)
+      show_help
+  esac
+}
+
+function clean_user_salt() {
+  rm -f "/srv/$1"
+  rm -rf "/srv/user/${1}"
+  mkdir -p "/srv/user/$1"
+  ln -s "/srv/user/$1" "/srv/$1"
+}
+
+function clean() {
+  case $1 in
+    salt)
+      assert_root
+      clean_user_salt "user_pillar"
+      clean_user_salt "user_salt"
+      clean_user_salt "user_formulas"
+      qubesctl --targets dom0 state.apply qubes.user-dirs
+      ;;
+    *)
+      show_help
+  esac
+}
+
+case $1 in
+  pull)
+    pull "$2"
+    ;;
+  clean)
+    clean "$2"
+    ;;
+  *)
+    show_help
+    ;;
+esac

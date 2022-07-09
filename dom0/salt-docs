@@ -1,0 +1,10 @@
+#!/bin/bash
+
+case $1 in
+  qvm)
+    sudo less /srv/formulas/test/qvm-formula/README.rst
+    ;;
+  default)
+    echo not found
+    ;;
+esac

@@ -1,0 +1,5 @@
+#!/bin/bash
+
+termina="xfce4-terminal"  # TODO: use config
+
+xfce4-terminal --command "sleep 2; sleep 2"

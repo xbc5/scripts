@@ -1,0 +1,6 @@
+#!/bin/bash
+is-appvm "$1" || (echo "$1 is not an appvm"; exit 1)
+
+[[ -z "$2" ]] \
+   && qvm-run --user user --no-gui $1 "TZ=UTC firefox -P default" \
+   || qvm-run --user user --no-gui $1 "TZ=UTC firefox -P $2"

@@ -1,0 +1,3 @@
+#!/bin/bash
+is-appvm "$1" || (echo "$1 is not an appvm"; exit 1)
+qvm-run $1 "emacs"

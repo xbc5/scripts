@@ -1,0 +1,37 @@
+#!/bin/bash
+
+function info(){
+  echo "VM: $1"
+
+  echo ""
+  echo "PREFS:"
+  echo "------"
+  echo "`qvm-prefs $1`"
+  
+  echo ""
+  echo "SERVICES:"
+  echo "---------"
+  echo "`qvm-service --list $1 | sort`"
+  
+  echo ""
+  echo "FEATURES:"
+  echo "---------"
+  echo "`qvm-features $1 | sort`"
+  
+  echo ""
+  echo "BLOCK DEVICES:"
+  echo "--------------"
+  echo "`qvm-block --list $1`"
+  
+  echo ""
+  echo "PCI DEVICES:"
+  echo "------------"
+  echo "`qvm-pci list $1`"
+
+  echo ""
+  echo "TAGS:"
+  echo "-----"
+  echo "`qvm-tags $1 list | sort`"
+}
+
+vimdiff --clean <(info "$1") <(info "$2")
