@@ -16,30 +16,30 @@ def is_ip(target):
     return True
 
 
-def ips_only(hosts):
+def filter_ips(hosts):
     return list(filter(is_ip, hosts))
 
 
-def dig(domain):
+def dig_short(domain):
     return listify(check_output(f'dig +short {domain}', shell=True))
 
 
-def ipinfo(target):
-    return check_output(f"curl --silent https://ipinfo.io/{target}", shell=True).decode("utf-8")
+def dig_long(domain):
+    return listify(check_output(f'dig {domain}', shell=True))
 
 
-def get_info(target):
-    ips = [target] if is_ip(target) else ips_only(dig(target))
+def host_info(target):
+    ips = [target] if is_ip(target) else filter_ips(dig_short(target))
     for ip in ips:
-        yield ipinfo(ip)
+        yield check_output(f"curl --silent https://ipinfo.io/{ip}", shell=True).decode("utf-8")
 
 
-def display_info (targets):
+def display_info(targets):
     reset="\033[0m"
     bold="\033[1m"
     for t in targets:
         print(f"{bold}{t}{reset}:")
-        for info in get_info(t):
+        for info in host_info(t):
             print(f"{info}\n")
 
 
