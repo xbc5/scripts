@@ -1,0 +1,21 @@
+#!/bin/bash
+
+function list() {
+  tmuxinator list -n | tail -n +2
+}
+
+function choose() {
+  fzf --height=10
+}
+
+case $1 in
+  s|start)
+    tmuxinator start "`list | choose`" $@
+    ;;
+  ss|stop)
+    tmuxinator stop "`list | choose`"
+    ;;
+  e|edit)
+    tmuxinator edit "`list | choose`"
+    ;;
+esac
