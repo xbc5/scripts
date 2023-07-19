@@ -1,0 +1,49 @@
+#!/bin/env bash
+# requres: ecryptfs-utils;
+# also `modprobe ecryptfs`
+
+# WARN: use ${HOME} for paths, not ~/
+
+[[ `command -v ecryptfs-add-passphrase` ]] || {
+  echo "You must install ecryptfs-utils first"
+  exit 1
+}
+
+lower="$1"
+upper="$2"
+sig="$3"
+
+
+
+if [[ `df | grep "$upper"` ]]; then
+  echo "Already mounted: ${upper}"
+  exit 1
+fi
+
+if ! [[ `grep "$sig" /proc/keys` ]]; then
+  printf "Password: "
+  ecryptfs-add-passphrase >/dev/null || exit $?
+
+  if ! [[ `grep "$sig" /proc/keys` ]]; then
+    # we expect the pw to match the provided sig
+    echo "incorrect"
+    exit 2
+  fi
+
+  echo "OK"
+fi
+
+mkdir -pm 700 "$lower"
+mkdir -pm 500 "$upper"
+
+# spaces between option,option break the command
+sudo mount -t ecryptfs "$lower" "$upper" -o \
+rw,\
+key=passphrase,\
+no_sig_cache,\
+ecryptfs_cipher=aes,\
+ecryptfs_key_bytes=16,\
+ecryptfs_passthrough=no,\
+ecryptfs_enable_filename_crypto=yes\
+ecryptfs_sig="$sig",\
+ecryptfs_fnek_sig="$sig"

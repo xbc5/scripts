@@ -12,13 +12,23 @@ archive="${repo}/notes.tar.gz"
 remote="$EFS_NOTES_REMOTE"
 
 [[ -z "$real_notes" ]] && echo "You must set EFS_NOTES_REAL" && exit 2
-[[ -z "$sig" ]] && echo "You must set sig" && exit 2
+[[ -z "$sig" ]] && echo "You must set EFS_NOTES_SIG" && exit 2
 [[ -z "$repo" ]] && echo "You must set EFS_NOTES_REPO directory" && exit 2
 [[ -z "$remote" ]] && echo "You must set EFS_NOTES_REMOTE" && exit 2
 
-function mounted() {
-  upper=`realpath $upper`
-  [[ `df | grep "$upper"` ]]
+function mounted() { [[ `df | grep "$upper"` ]]; }
+
+function mounted_echo() { mounted && echo true || echo false; }
+
+# Mount if unmounted, returning non-zero only when mount errors.
+function mnt() {
+  mounted || ecryptfs-mount "$lower" "$upper" "$sig"
+}
+
+# Unmount if mounted, returning non-zero only when umount errors.
+function umnt() {
+  mounted && { sudo umount "$upper"; return $?; }
+  return 0
 }
 
 # -l: preserve symlinks;
@@ -32,42 +42,14 @@ function mounted() {
 # sake of Git.
 # -N is not supported on Fedora; but rsync DOES preserve creation times anyway.
 function local_backup() { rsync -rltq --delete "$real_notes" "$upper"; }
-function remote_backup(){ rsync -rltq --delete "$lower" "$remote"; }
-function unmount() { sudo umount "$upper"; }
-
-# Unmount if mounted; return a flag: 0 if mounted.
-# This will exit if it can't unmount (to prevent possible corruption).
-function try_unmount() {
-  local remount=1
-  mounted && local remount=0 && unmount || exit 5
-  return $remount
-}
-
-# Try mount if not mountd; return 0 if we mounted it.
-function try_mount() {
-  local did_mount=1
-  mounted || local did_mount=0 && mount || exit 5
-  return $do_umount
-}
-
-# Mount if $1 == 0: complements try_unmount
-function mount_if() { (( $1 == 0 )) && mount; }
-function unmount_if() { (( $1 == 0 )) && unmount; }
-
-function backup() {
-  mounted && {
-    local_backup
-    return $?
-  }
-
-  mount || exit 5
-  local_backup; local status=$?
-  unmount
-  return $status
-}
-
-function mount() {
-  ecryptfs-mount "$lower" "$upper" "$sig"
+function remote_backup(){
+  if ! [[ -d "${remote}" ]]; then
+    echo "The remote directory doesn't exist, you must create and mount it first: '$remote'"
+    exit 1
+  fi
+  local target="${remote}/encrypted/"
+  mkdir -p "$target"
+  rsync -rltq --delete "${lower}/" "$target";
 }
 
 function ifyes() {
@@ -77,8 +59,6 @@ function ifyes() {
 
 function do_export() {
   local send=false
-  local remount=false
-
   ifyes "Send to VM afterwards?" && local send=true
 
   echo "Exporting to '${archive}'.."
@@ -86,10 +66,6 @@ function do_export() {
     && sha1sum "`basename $archive`" > "${archive}.sha1" \
     && $send \
     && qvm-copy "$archive" "${archive}.sha1"
-
-  local status=$?
-  $remount && echo "remounting.." && mount
-  return $status
 }
 
 function help() {
@@ -98,49 +74,64 @@ Usage:
   `basename ${0}` OPTION
 
 OPTION
-  mount,  m       mount the encrypted files
-  umount, u       unmount the encrypted file
-  local,  lb      backup plaintext notes => local repo.
-  remote, rb      backup ciphertext notes => remote repo.
-  export, e       export archive to "${archive}"
-  help,   h       show this help menu
+  mount,   m       mount the encrypted files
+  unmount, u       unmount the encrypted file
+
+  export,  e       export archive to "${archive}"
+  local,   lb      backup plaintext notes => local repo.
+  remote,  rb      backup ciphertext notes => remote repo.
+  push,    p       do a local backup, then a remote backup
+  pull,    pp      pull remote data and install it locally
+
+  help,    h       show this help menu
+  status   st      show the current state of mounts
 
 EOF
 }
 
 case "$1" in
   "mount"|"m")
-    mount && echo "Notes mounted"
+    mnt && echo "Notes mounted"
     ;;
-  "umount"|"u")
-    unmount && echo "Notes unmounted"
+  "unmount"|"u")
+    umnt && echo "Notes unmounted"
     ;;
   "local"|"lb")
     echo "Doing local backup..."
-    wasnt_mounted=`try_mount`
-    local_backup && echo "Local backup OK"
-    unmount_if $wasnt_mounted
+    was_mounted=`mounted_echo`
+    mnt && local_backup && echo "Local backup OK"
+    [[ $was_mounted == false ]] && umnt
     ;;
   "remote"|"rb")
     echo "Doing remote backup..."
-    was_mounted=`try_unmount`
-    remote_backup && echo "Remote backup OK"
-    mount_if $was_mounted
+    was_mounted=`mounted_echo`
+    umnt && remote_backup && echo "Remote backup OK"
+    [[ $was_mounted == true ]] && mnt
     ;;
-  "sync"|"s")
+  "push"|"p")
     echo "Doing FULL backup..."
-    did_mount=`try_mount`
+    was_mounted=`mounted_echo`
+    mnt || exit 6
     local_backup || exit 6
-    unmount || exit 6
+    umnt || exit 6
     remote_backup || exit 6
     echo "FULL backup OK"
-    (( $did_mount != 0 )) && mount
+    [[ $was_mounted == true ]] && mnt
+    ;;
+  "pull"|"pp")
+    echo "not immplemented"
+    exit 1
     ;;
   "export"|"e")
-    do_export && echo "Export OK"
+    was_mounted=`mounted_echo`
+    umnt && do_export && echo "Export OK"
+    [[ $was_mounted == true ]] && mnt
     ;;
-  "help"|"h")
+  "help"|"h"|"-h"|"--help")
     help
+    ;;
+  "status"|"st")
+    mounted && echo "mounted" || echo "unmounted"
     ;;
   *)
     echo -e "Unknown OPTION: '$1'\n"
