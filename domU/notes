@@ -1,0 +1,149 @@
+#!/bin/env bash
+# requires: rsync; ecryptfs-utils;
+#
+# WARN: ise ${HOME} for paths, not ~/
+
+sig="$EFS_NOTES_SIG"
+repo="$EFS_NOTES_REPO"
+lower="${repo}/.lower"
+upper="${repo}/upper"
+real_notes="$EFS_NOTES_REAL"
+archive="${repo}/notes.tar.gz"
+remote="$EFS_NOTES_REMOTE"
+
+[[ -z "$real_notes" ]] && echo "You must set EFS_NOTES_REAL" && exit 2
+[[ -z "$sig" ]] && echo "You must set sig" && exit 2
+[[ -z "$repo" ]] && echo "You must set EFS_NOTES_REPO directory" && exit 2
+[[ -z "$remote" ]] && echo "You must set EFS_NOTES_REMOTE" && exit 2
+
+function mounted() {
+  upper=`realpath $upper`
+  [[ `df | grep "$upper"` ]]
+}
+
+# -l: preserve symlinks;
+# -t: preserve modification times; (require for efficient rsync comparisons)
+# -N: preserve creation times
+# -q: quiet (except for errors)
+# I don't care about preserving permissions; or access times.
+# preserving access times means that the file changes regularly,
+# and output of the file completely changes, and needs a reupload.
+# We also want to preserve modification and creation times for the
+# sake of Git.
+# -N is not supported on Fedora; but rsync DOES preserve creation times anyway.
+function local_backup() { rsync -rltq --delete "$real_notes" "$upper"; }
+function remote_backup(){ rsync -rltq --delete "$lower" "$remote"; }
+function unmount() { sudo umount "$upper"; }
+
+# Unmount if mounted; return a flag: 0 if mounted.
+# This will exit if it can't unmount (to prevent possible corruption).
+function try_unmount() {
+  local remount=1
+  mounted && local remount=0 && unmount || exit 5
+  return $remount
+}
+
+# Try mount if not mountd; return 0 if we mounted it.
+function try_mount() {
+  local did_mount=1
+  mounted || local did_mount=0 && mount || exit 5
+  return $do_umount
+}
+
+# Mount if $1 == 0: complements try_unmount
+function mount_if() { (( $1 == 0 )) && mount; }
+function unmount_if() { (( $1 == 0 )) && unmount; }
+
+function backup() {
+  mounted && {
+    local_backup
+    return $?
+  }
+
+  mount || exit 5
+  local_backup; local status=$?
+  unmount
+  return $status
+}
+
+function mount() {
+  ecryptfs-mount "$lower" "$upper" "$sig"
+}
+
+function ifyes() {
+  read -p "$1 [y/N]: " answer
+  [[ "${answer^^}" == "Y" || "${answer^^}" == "YES" ]]
+}
+
+function do_export() {
+  local send=false
+  local remount=false
+
+  ifyes "Send to VM afterwards?" && local send=true
+
+  echo "Exporting to '${archive}'.."
+  tar -czf "$archive" "$lower" >/dev/null 2>&1 \
+    && sha1sum "`basename $archive`" > "${archive}.sha1" \
+    && $send \
+    && qvm-copy "$archive" "${archive}.sha1"
+
+  local status=$?
+  $remount && echo "remounting.." && mount
+  return $status
+}
+
+function help() {
+  cat <<EOF
+Usage:
+  `basename ${0}` OPTION
+
+OPTION
+  mount,  m       mount the encrypted files
+  umount, u       unmount the encrypted file
+  local,  lb      backup plaintext notes => local repo.
+  remote, rb      backup ciphertext notes => remote repo.
+  export, e       export archive to "${archive}"
+  help,   h       show this help menu
+
+EOF
+}
+
+case "$1" in
+  "mount"|"m")
+    mount && echo "Notes mounted"
+    ;;
+  "umount"|"u")
+    unmount && echo "Notes unmounted"
+    ;;
+  "local"|"lb")
+    echo "Doing local backup..."
+    wasnt_mounted=`try_mount`
+    local_backup && echo "Local backup OK"
+    unmount_if $wasnt_mounted
+    ;;
+  "remote"|"rb")
+    echo "Doing remote backup..."
+    was_mounted=`try_unmount`
+    remote_backup && echo "Remote backup OK"
+    mount_if $was_mounted
+    ;;
+  "sync"|"s")
+    echo "Doing FULL backup..."
+    did_mount=`try_mount`
+    local_backup || exit 6
+    unmount || exit 6
+    remote_backup || exit 6
+    echo "FULL backup OK"
+    (( $did_mount != 0 )) && mount
+    ;;
+  "export"|"e")
+    do_export && echo "Export OK"
+    ;;
+  "help"|"h")
+    help
+    ;;
+  *)
+    echo -e "Unknown OPTION: '$1'\n"
+    help
+    ;;
+esac
