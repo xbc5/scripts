@@ -113,9 +113,10 @@ case "$1" in
     was_mounted=`mounted_echo`
     mnt || exit 6
     local_backup || exit 6
+    echo "Local backup OK"
     umnt || exit 6
     remote_backup || exit 6
-    echo "FULL backup OK"
+    echo "Remote backup OK"
     [[ $was_mounted == true ]] && mnt
     ;;
   "pull"|"pp")
