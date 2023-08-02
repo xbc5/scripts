@@ -1,0 +1,5 @@
+#!/bin/bash
+# Display a sorted list of memory usage by application
+ps -eo size,pid,user,command --sort -size | \
+    awk '{ hr=$1/1024 ; printf("%13.2f MB ",hr) } { for ( x=4 ; x<=NF ; x++ ) { printf("%s ",$x) } print "" }' |\
+    cut -d "" -f2 | cut -d "-" -f1
