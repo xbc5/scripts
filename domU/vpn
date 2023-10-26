@@ -1,0 +1,386 @@
+#!/bin/env python3
+from pathlib import Path
+import requests
+from string import Template
+from pprint import pp
+from random import choice
+import subprocess
+import os
+import shutil
+import argparse
+import sys
+import random
+import pwd
+import csv
+
+# TODO: random(); random.service; this-is-dispvm; saving favourites to disp-t
+
+if os.getuid() != 0:
+    print("You must run as root")
+    sys.exit(1)
+
+# supported protocols
+PROTOS = set(["tcp", "udp"])
+
+class Connect:
+    def __init__(self, ovpncfg: Path, ovpncfgs: Path, root: Path, favs: Path):
+        """
+        Parameters
+        ----------
+        ovpncfg : Path
+            The path to vpn-client.conf
+        ovpncfgs : Path
+            The (full path) root directory that holds all usable OpenVPN OVPN configs
+        root : Path
+            The directory (path) that holds all VPN files -- e.g. /rw/config/vpn
+        favs : Path
+            The path to the favs file
+        """
+        self.ovpncfg = ovpncfg
+        self.ovpncfgs = ovpncfgs
+        self.root = root
+        self.chosen: list[str] = []
+        self._favsfile = favs
+
+    @property
+    def active_cfg(self):
+        """
+        Return the full (resolved) Path to the active config (e.g. vpn-client.conf).
+
+        Returns
+        -------
+        Path
+            A full path string -- e.g. /rw/config/vpn/vpn-client.conf
+        """
+        return Path(self.ovpncfg).resolve()
+
+    @property
+    def inactive_cfgs(self) -> list[Path]:
+        """
+        Return a list of inactive configs.
+
+        Returns
+        -------
+        list
+            A list of Paths to every inactive config (relative to OVPNS cfgs dir)
+            -- e.g. ["proton/secure-core/udp/foo-bar-xyz.ovpn", ...]
+        """
+        # p is relative, and active_cfg is not, so we must join it before comparison
+        return [p for p in Path(self.ovpncfgs).glob("**/*.ovpn")
+         if Path(self.ovpncfgs, p) != self.active_cfg]
+
+    def set_link(self):
+        """
+        Remove the current config, and link to a new one.
+
+        Parameters
+        ----------
+        chosen : Path
+            The full path to the chosen config.
+        """
+        os.chdir(self.root)
+        try:
+            os.remove(self.ovpncfg)
+        except FileNotFoundError:
+            pass
+
+        if len(self.chosen) == 1:
+            os.symlink(self.chosen[0], self.ovpncfg)
+        elif len(self.chosen) > 1:
+            raise AttributeError("Trying to set multiple config links -- did you mean to save instead?")
+
+        return self
+
+    def inactive_only(self, cfgs):
+        return [c for c in cfgs if Path(c).resolve() != self.active_cfg]
+
+    def random(self):  # noqa: F811
+        return choice(self.inactive_only(self.fav))
+
+    def to_string(self, lst):
+        return '\n'.join([str(i) for i in lst])
+
+    @property
+    def favs(self) -> list[str]:
+        try:
+            with open(self._favsfile, 'r', newline='') as f:
+                return f.read().strip().split("\n")
+        except FileNotFoundError:
+            return []
+
+    def save(self):
+        """
+        Save favourites.
+
+        Returns
+        -------
+        self
+        """
+        if len(self.chosen) > 0:
+            favs = self.favs # reads from file
+            with open(self._favsfile, 'w') as f:
+                data = '\n'.join(sorted(list(set(favs + self.chosen))))
+                f.write(data)
+        print("favourites written")
+        return self
+
+    def delete(self):
+        """
+        Delete favourites.
+
+        Returns
+        -------
+        self
+        """
+        if len(self.chosen) > 0:
+            favs = self.favs # reads from file
+            with open(self._favsfile, 'w', newline='') as f:
+                favs = [f for f in favs if f not in self.chosen]
+                data = '\n'.join(sorted(list(set(favs))))
+                f.write(data)
+        print("favourites deleted")
+        return self
+
+    def choose(self, multi=False, favs=False):
+        """
+        Choose an inactive config with FZF.
+
+        Parameters
+        ----------
+        multi : bool
+            Make multiple choices at a time
+        favs : bool
+            Select from favourites instead
+
+        Returns
+        -------
+        self
+        """
+        process: subprocess.Popen = subprocess.Popen(
+            ["fzf", "-m"] if multi else ["fzf"],
+            stdout=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            encoding="utf-8")
+
+        stdout, _ = process.communicate(self.to_string(self.favs if favs else self.inactive_cfgs))
+        self.chosen = stdout.splitlines() if multi else stdout.strip()
+        return self
+
+    def start(self):
+        if self.chosen:
+            # don't restart service unless the user makes a choice
+            subprocess.check_call("systemctl stop qubes-vpn-handler", shell=True)
+            subprocess.check_call("systemctl start qubes-vpn-handler", shell=True)
+        return self
+
+
+class ProtonOvpnCfg:
+    def __init__(self, template, uid, dst, features, protos, entries, exits, all_ports, tports, uports):
+        self.features = features
+        self.protos = protos
+        self.uid = uid
+        self.entries = entries
+        self.exits = exits
+        self.all_ports = all_ports
+        self.tports = tports
+        self.uports = uports
+        self.template = template
+        self.dst = os.path.join(dst, "proton")
+        self.logicals = "vpn/logicals"
+        self.clientcfg = "vpn/clientconfig"
+        self.feats = {1: "secure-core", 2: 'tor', 3: 'p2p'}
+
+    def url(self, endpoint):
+        return f"https://api.protonmail.ch/{endpoint}"
+
+    def fetch_servers(self):
+        os.seteuid(self.uid)
+        srv = requests.get(self.url(self.logicals), headers={"Content-Type": "application/json"})
+        cfg = requests.get(self.url(self.clientcfg), headers={"Content-Type": "application/json"})
+        os.seteuid(0)
+        return srv.json(), cfg.json()
+
+    def map_servers(self, servers, ports):
+        """
+        An example of the output:
+        {
+          'secure-core': {
+            'foo.bar.baz.com': {
+              'entry': 'SE',
+              'exit': 'UK',
+              'servers': {
+                'tcp': Set{remote 1.1.1.1 1174, ...}
+              }
+            }
+          },
+          'tor': {...},
+          'p2p': {...},
+        }
+        """
+        srv = {}
+
+        for s in servers:
+            feat = self.feats.get(s['Features'], "unknown")
+            entry = s['EntryCountry']
+            ext = s['ExitCountry']
+
+            if len(self.features) > 0 and feat not in self.features:
+                continue
+            if len(self.exits) > 0 and ext not in self.exits:
+                continue
+            if len(self.entries) > 0 and entry not in self.entries:
+                continue
+
+            domain = s['Domain']
+
+            if not srv.get(feat, None):
+                srv[feat] = {}
+
+            if not srv[feat].get(domain, None):
+                srv[feat][domain] = { 'servers': {} }
+
+            srv[feat][domain]['entry'] = entry
+            srv[feat][domain]['exit'] = ext
+
+            for n in s['Servers']:
+                if 'tcp' in self.protos:
+                    if not srv[feat][domain]['servers'].get('tcp', False):
+                        srv[feat][domain]['servers']['tcp'] = set()
+                    _tports = ports['TCP'] if self.all_ports else self.tports
+                    for p in _tports:
+                        srv[feat][domain]['servers']['tcp'].add(f"remote {n['EntryIP']} {p}")
+                if 'udp' in self.protos:
+                    if not srv[feat][domain]['servers'].get('udp', False):
+                        srv[feat][domain]['servers']['udp'] = set()
+                    _uports = ports['UDP'] if self.all_ports else self.uports
+                    for p in _uports:
+                        srv[feat][domain]['servers']['udp'].add(f"remote {n['EntryIP']} {p}")
+
+        if srv.get('unknown', None) is not None:
+            del srv['unknown']
+        return srv
+
+
+    def get_template(self):
+        with open(self.template, 'r') as f:
+            return f.read()
+
+    def write_conf(self, template, dst, remotes=[]):
+        t = Template(template)
+        t = t.substitute(remotes='\n'.join(remotes))
+        with open(dst, 'w') as f:
+            f.write(t)
+
+    def create_confs(self):
+        srv, cfg = self.fetch_servers()
+        # filtering by feature before merging makes sense, because each feature is different, it confuses things
+        # while merging will clobber -- it's unpredictable, and I just want this script done.
+        filtered = self.map_servers(srv['LogicalServers'], cfg['OpenVPNConfig']['DefaultPorts'])
+        try:
+            shutil.rmtree(self.dst)
+        except FileNotFoundError:
+            pass
+        os.makedirs(self.dst, exist_ok=True)
+        confs = 0
+        for feat, domains in filtered.items():
+            for domain, detail in domains.items():
+                for proto in ["tcp", "udp"]:
+                    if detail['servers'].get(proto):
+                        d = os.path.join(self.dst, feat, proto)
+                        os.makedirs(d, exist_ok=True)
+                        p = os.path.join(d, f"{domain}.ovpn")
+                        self.write_conf(self.get_template(), p, detail['servers'][proto])
+                        confs += 1
+        print(f"{confs} confs found")
+
+
+    def feature_filter(self, srv, feat):
+        return [s for s in srv if s['Features'] == feat]
+
+
+parser = argparse.ArgumentParser(prog='PROG')
+subparsers = parser.add_subparsers(title="commands", dest="command")
+
+# choices=[]
+proton = subparsers.add_parser("proton")
+proton.add_argument('-f', '--features', nargs='+', default="secure-core", choices=["secure-core", "tor", "p2p"],
+                    help='enable secure-core, tor, and/or p2p (default: secure-core)')
+proton.add_argument('-p', '--protos', nargs='+', help='use tcp and/or udp (default: both)',
+                    default=["tcp", "udp"], choices=["tcp", "udp"])
+proton.add_argument('-e', '--entries', nargs='+', help='use entry nodes only from specified countries', default=[])
+proton.add_argument('-a', '--all-ports', help='use all of the supported ports', default=False, action="store_true")
+proton.add_argument('-u', '--tcp-ports', nargs='+', help='use these TCP ports: see https://api.protonmail.ch/vpn/clientconfig', default=['443'])
+proton.add_argument('-t', '--udp-ports', nargs='+', help='use these UDP ports: see https://api.protonmail.ch/vpn/clientconfig', default=['1194'])
+proton.add_argument('-x',  '--exits', nargs='+', help='use exit nodes only from specified countries', default=[])
+
+ovpn = subparsers.add_parser("ovpn")
+ovpn.add_argument('-c', '--choose', default=False, action="store_true", help='fuzzy select any config')
+ovpn.add_argument('-s', '--save', default=False, action="store_true", help='save the current config as a favourite')
+ovpn.add_argument('-m', '--save-multiple', default=False, action="store_true", help='pick multiple configs to save as a favourite')
+ovpn.add_argument('-d', '--delete', default=False, action="store_true", help='delete multiple favourites')
+
+args = parser.parse_args()
+
+class CFG:
+    _template = 'template.ovpn'
+    root = Path('/rw/config/vpn')
+    _cfg = 'cfg.yml'
+    _client_config = 'vpn-client.conf'
+    _ovpncfgs = 'confs'
+    _favs = 'favs.csv'
+
+    def __init__(self):
+        self.useruid = pwd.getpwnam('user').pw_uid  # get from config file
+
+    @property
+    def cfg(self):
+        return Path(self.root, self._cfg).resolve()
+
+    @property
+    def ovpncfg(self):
+        return Path(self.root, self._client_config).resolve()
+
+    @property
+    def template(self):
+        return Path(self.root, self._template).resolve()
+
+    @property
+    def ovpncfgs(self):
+        """
+        The Path() that holds all OVPN configs.
+        """
+        return Path(self.root, self._ovpncfgs).resolve()
+
+    @property
+    def favs(self):
+        """
+        The full Path() that points to the favs file.
+        """
+        return Path(self.root, self._favs).resolve()
+
+cfg = CFG()
+
+if args.command == "proton":
+    ProtonOvpnCfg(template=cfg.template,
+                  dst=cfg.ovpncfgs,
+                  uid=cfg.useruid,
+                  features=args.features,
+                  protos=args.protos,
+                  entries=args.entries,
+                  exits=args.exits,
+                  all_ports=args.all_ports,
+                  tports=args.tcp_ports,
+                  uports=args.udp_ports)\
+                          .create_confs()
+elif args.command == "ovpn":
+    ovpn = Connect(ovpncfgs=cfg.ovpncfgs, ovpncfg=cfg.ovpncfg, root=cfg.root, favs=cfg.favs)
+    if args.choose:
+        ovpn.choose().set_link().start()
+    if args.save_multiple:
+        ovpn.choose(multi=True).save()
+        sys.exit() # FIXME
+    if args.delete:
+        ovpn.choose(multi=True, favs=True).delete()
+    else:
+        # make this the default behaviour too
+        ovpn.choose().set_link().start()
