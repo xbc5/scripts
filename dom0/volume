@@ -1,0 +1,22 @@
+#!/bin/bash
+
+function _help() {
+  cat << EOF
+Usage `basename $0` [OPTION]
+
+OPTIONS
+  up,++              turn it up 5%
+  down,--            turn it down 5%
+  mute,x             toggle mute
+  help,h,-h,--help   show help
+
+EOF
+}
+
+case "$1" in
+  "up"|"++")   pactl set-sink-volume 0 +5%;;
+  "down"|"--") pactl set-sink-volume 0 -5%;;
+  "mute"|"x")  pactl set-sink-mute   0 toggle;;
+  "help"|"-h"|"h"|"--help") _help;;
+  *) _help && exit 1;;
+esac
