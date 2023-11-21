@@ -1,0 +1,24 @@
+#!/bin/bash
+
+[[ -z "$MY_GIT_REPOS" ]] && MY_GIT_REPOS="${HOME}/projects:${HOME}/git"
+[[ -z "$EDITOR" ]] && EDITOR="nvim"
+
+IFS=":"
+read -ra PATHS <<< "$MY_GIT_REPOS"
+
+function _pick() {
+  fd -u '^\.git$' ${PATHS[@]} --prune -X printf '%s\n' '{//}' "$PATH_PROJECTS" | sort | launcher --emacs
+}
+
+function _open() {
+  kitty --class ide -d "$1" -e "$EDITOR"
+}
+
+case "$1" in
+  "-p"|"--pick"|"") choice="`_pick`";;
+  *) choice="$1";;
+esac
+
+[[ -d "$choice" ]] || { echo "not a directory: '$choice'"; exit 1; }
+
+_open "$choice"
