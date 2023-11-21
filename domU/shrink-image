@@ -1,0 +1,26 @@
+#!/bin/env bash
+set -e
+
+# width
+[[ -z "$2" ]] && width="400" || width="$2" # default 400
+
+# src file path
+src="$1"
+[[ -f "$src" ]] || { echo "file not found: $src"; exit 1; }
+fname="`basename $src`"
+dname="`dirname $src`"
+
+function mime() {
+  file --mime-type "$src" | awk '{print $2}'
+}
+
+# if jpg, convert
+target="$src"
+if [[ `mime` != "image/jpeg" ]]; then
+  newfname="${fname%.*}.jpg"
+  target="${dname}/${newfname}"
+  convert "$src" "$target"
+fi
+
+# strip and resize
+mogrify -strip -quality 30 -geometry "$width" "$target"
