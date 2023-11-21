@@ -1,63 +1,26 @@
 #!/bin/env bash
-# requires: rsync; ecryptfs-utils;
+# requires: rsync, rclone, tar, sha1sum, qvm-copy;
 #
 # WARN: ise ${HOME} for paths, not ~/
 
-sig="$EFS_NOTES_SIG"
-repo="$EFS_NOTES_REPO"
-lower="${repo}/.lower"
-upper="${repo}/upper"
-real_notes="$EFS_NOTES_REAL"
-archive="${repo}/notes.tar.gz"
-remote="$EFS_NOTES_REMOTE"
+NOTES_DIR="${HOME}/org"
+NOTES_DIR_BACKUP="${HOME}/.backup/org"
+NOTES_REMOTE_RCLONE="encrypted:/notes"
 
-[[ -z "$real_notes" ]] && echo "You must set EFS_NOTES_REAL" && exit 2
-[[ -z "$sig" ]] && echo "You must set EFS_NOTES_SIG" && exit 2
-[[ -z "$repo" ]] && echo "You must set EFS_NOTES_REPO directory" && exit 2
-[[ -z "$remote" ]] && echo "You must set EFS_NOTES_REMOTE" && exit 2
+notesdir="$NOTES_DIR"
+backupdir="$NOTES_DIR_BACKUP"
+remote="$NOTES_REMOTE_RCLONE"
+archive="${HOME}/notes.tar.gz"
 
-function mounted() { [[ `df | grep "$upper"` ]]; }
-
-function mounted_echo() { mounted && echo true || echo false; }
-
-# Mount if unmounted, returning non-zero only when mount errors.
-function mnt() {
-  mounted || ecryptfs-mount "$lower" "$upper" "$sig"
-}
-
-# Unmount if mounted, returning non-zero only when umount errors.
-function umnt() {
-  mounted && { sudo umount "$upper"; return $?; }
-  return 0
-}
-
-# -l: preserve symlinks;
-# -t: preserve modification times; (require for efficient rsync comparisons)
-# -N: preserve creation times
-# -q: quiet (except for errors)
-# I don't care about preserving permissions; or access times.
-# preserving access times means that the file changes regularly,
-# and output of the file completely changes, and needs a reupload.
-# We also want to preserve modification and creation times for the
-# sake of Git.
-# -N is not supported on Fedora; but rsync DOES preserve creation times anyway.
-function local_backup() { rsync -rltq --delete "$real_notes" "$upper"; }
-function remote_backup(){
-  if ! [[ -d "${remote}" ]]; then
-    echo "The remote directory doesn't exist, you must create and mount it first: '$remote'"
-    exit 1
-  fi
-  local target="${remote}/encrypted/"
-  mkdir -p "$target"
-  rsync -rltq --delete "${lower}/" "$target";
-}
+[[ -z "$notesdir" ]] && echo "You must set NOTES_DIR" && exit 2
+[[ -z "$remote" ]] && echo "You must set NOTES_REMOTE_RCLONE" && exit 2
 
 function ifyes() {
   read -p "$1 [y/N]: " answer
   [[ "${answer^^}" == "Y" || "${answer^^}" == "YES" ]]
 }
 
-function do_export() {
+function doexport() {
   local send=false
   ifyes "Send to VM afterwards?" && local send=true
 
@@ -74,65 +37,45 @@ Usage:
   `basename ${0}` OPTION
 
 OPTION
-  mount,   m       mount the encrypted files
-  unmount, u       unmount the encrypted file
+  export, e       export archive to "${archive}"
+  sync,   s       sync to remote, deleting remote files
+                  when necessary
+  sync,   p       pull notes (you should only do this once
+                  on a fresh machine)
 
-  export,  e       export archive to "${archive}"
-  local,   lb      backup plaintext notes => local repo.
-  remote,  rb      backup ciphertext notes => remote repo.
-  push,    p       do a local backup, then a remote backup
-  pull,    pp      pull remote data and install it locally
-
-  help,    h       show this help menu
-  status   st      show the current state of mounts
+  help,   h       show this help menu
 
 EOF
 }
 
 case "$1" in
-  "mount"|"m")
-    mnt && echo "Notes mounted"
+  "sync"|"s")
+    echo "Syncing '$notesdir' => '${remote}'..."
+    mkdir -p "$backupdir"
+    # the OneDrive (linux client) author states 4 max parallel for OneDrive:
+    # https://askubuntu.com/a/1370774
+    echo "Doing local backup: $notesdir => ${backupdir}..." \
+      && rsync -rltq --delete "${notesdir}/" "$backupdir" \
+      && echo "Syncing $backupdir => ${remote}..." \
+      && rclone sync "$backupdir" "$remote" --verbose --transfers=4 \
+      && echo "Remote backup OK"
     ;;
-  "unmount"|"u")
-    umnt && echo "Notes unmounted"
-    ;;
-  "local"|"lb")
-    echo "Doing local backup..."
-    was_mounted=`mounted_echo`
-    mnt && local_backup && echo "Local backup OK"
-    [[ $was_mounted == false ]] && umnt
-    ;;
-  "remote"|"rb")
-    echo "Doing remote backup..."
-    was_mounted=`mounted_echo`
-    umnt && remote_backup && echo "Remote backup OK"
-    [[ $was_mounted == true ]] && mnt
-    ;;
-  "push"|"p")
-    echo "Doing FULL backup..."
-    was_mounted=`mounted_echo`
-    mnt || exit 6
-    local_backup || exit 6
-    echo "Local backup OK"
-    umnt || exit 6
-    remote_backup || exit 6
-    echo "Remote backup OK"
-    [[ $was_mounted == true ]] && mnt
-    ;;
-  "pull"|"pp")
-    echo "not immplemented"
-    exit 1
+  "pull"|"p")
+    if [[ -d "$notesdir" ]]; then
+      echo "Notes already exists ($notesdir), not pulling"
+      exit 1
+    fi
+    echo "Pulling '$remote' => '${notesdir}'..."
+    rclone copy "$remote" "$notesdir" --verbose \
+      && echo "Pulled OK"
     ;;
   "export"|"e")
-    was_mounted=`mounted_echo`
-    umnt && do_export && echo "Export OK"
-    [[ $was_mounted == true ]] && mnt
+    echo Not implemented
+    exit 2
+    doexport && echo "Export OK"
     ;;
   "help"|"h"|"-h"|"--help")
     help
-    ;;
-  "status"|"st")
-    mounted && echo "mounted" || echo "unmounted"
     ;;
   *)
     echo -e "Unknown OPTION: '$1'\n"
