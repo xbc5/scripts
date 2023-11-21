@@ -19,6 +19,7 @@ case "$1" in
   *) choice="$1";;
 esac
 
+[[ -z "$choice" ]] && exit 0 # sometimes we cancel
 [[ -d "$choice" ]] || { echo "not a directory: '$choice'"; exit 1; }
 
 _open "$choice"
