@@ -12,7 +12,7 @@ function from_args() {
    args=$(IFS=','; echo "$*")
 
   # Fetch data from the API
-  curl "https://www.toptal.com/developers/gitignore/api/${args}"
+  curl -sS "https://www.toptal.com/developers/gitignore/api/${args}"
 }
 
 # Function to join array elements into a delimited string
