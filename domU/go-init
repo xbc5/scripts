@@ -1,0 +1,31 @@
+#!/bin/bash
+
+if [ $# -eq 0 ]; then
+   echo "Usage: $0 <project_name>"
+   exit 1
+fi
+
+project_name="$1"
+module_name="$project_name" # Change this to your desired module name
+go_version=$(go version | awk '{print $3}' | sed 's/\.[0-9]*$//')
+
+[[ -d "$project_name" ]] && echo "already exists" && exit 1
+
+# Create project directory and navigate to it
+mkdir $project_name
+cd $project_name
+
+# Initialize Go module and create go.mod file
+echo "module $module_name" > go.mod
+echo "go ${go_version#go}" >> go.mod
+
+# Create main.go file and populate it
+cat <<EOT >> main.go
+package main
+
+import "fmt"
+
+func main() {
+
+}
+EOT
