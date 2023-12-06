@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Join all arguments with a comma
+args=$(IFS=','; echo "$*")
+
+# Fetch data from the API
+curl "https://www.toptal.com/developers/gitignore/api/${args}"
