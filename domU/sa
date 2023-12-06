@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Check if script is run as root
+if [ "$EUID" -eq 0 ]; then
+  echo "This script must not be run as root"
+  exit 1
+fi
+
+# List all .priv files under ~/.ssh
+file_list="$(\ls ${HOME}/.ssh/*.priv)"
+
+# Use fzf to select a file
+selected_file=$(echo "$file_list" | fzf)
+
+# Check if a file was selected
+if [ -z "$selected_file" ]; then
+  echo "No file was selected"
+  exit 1
+fi
+
+# Add the selected file to ssh-agent
+ssh-add "$selected_file"
