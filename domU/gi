@@ -1,7 +1,78 @@
 #!/bin/bash
 
-# Join all arguments with a comma
-args=$(IFS=','; echo "$*")
+function join_by {
+  local d=${1-} f=${2-}
+  if shift 2; then
+    printf %s "$f" "${@/#/$d}"
+  fi
+}
 
-# Fetch data from the API
-curl "https://www.toptal.com/developers/gitignore/api/${args}"
+function from_args() {
+  # Join all arguments with a comma
+   args=$(IFS=','; echo "$*")
+
+  # Fetch data from the API
+  curl "https://www.toptal.com/developers/gitignore/api/${args}"
+}
+
+# Function to join array elements into a delimited string
+function fuzzy_select() {
+  # Check if .gitignore file already exists
+  if [ -f .gitignore ]; then
+    read -p "A .gitignore file already exists. Do you want to overwrite it? (y/N) " -n 1 -r
+    echo # (optional) move to a new line
+   if [[ $REPLY =~ ^[Yy]$ ]]; then
+     echo "Overwriting existing .gitignore file"
+   else
+     exit 1
+   fi
+  fi
+
+  # Fetch all .gitignore files from the Github API
+  file_list=$(curl -s "https://api.github.com/repos/toptal/gitignore/contents/templates" | jq -r '.[] | select(.name | endswith(".gitignore")) | .name | sub(".gitignore$"; "")')
+
+  # Use fzf to select files
+  selected_files=$(echo "$file_list" | fzf -m)
+
+  # Check if files were selected
+  if [ -z "$selected_files" ]
+   then echo "No files were selected"
+   exit 1
+  fi
+
+  # Join all selected files with a comma
+  args=$(join_by "," $selected_files)
+
+  echo "ignoring $args"
+
+  # Fetch data from the API
+  response=$(curl -s "https://www.toptal.com/developers/gitignore/api/${args}")
+
+  # Write response to .gitignore file
+  echo "$response" > .gitignore
+}
+
+function __help() {
+  cat << EOF
+Usage `basename $0` [ARGS]
+
+ARGS is a list of ignore targets: e.g. Linux Vim Go. It
+returns the result to stdout.
+
+If you provide no ARGS, then you will be prompted with
+an FZF multi-select. It sends the result to .gitignore
+(prompting first).
+
+EOF
+}
+
+case "$1" in
+  "-h"|"--help"|"h") __help;;
+  *)
+    if (( ${#} > 0 ));then
+      from_args $@
+    else
+      fuzzy_select
+    fi
+    ;;
+esac
