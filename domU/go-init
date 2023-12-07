@@ -28,8 +28,6 @@ gi Linux Vim Go Git > .gitignore
 cat <<EOT >> main.go
 package main
 
-import "fmt"
-
 func main() {
 
 }
