@@ -1,4 +1,7 @@
-read -r -d '' text << EOF
+#!/bin/bash
+
+function chat() {
+    read -r -d '' text << EOF
 These are the rules for our conversation:
   1. be as short as possible, in most cases a single sentence. When I say "elaborate" that is your cue to be verbose, but leave out the obvious things. If I say ELI5, then elaborate with the obvious stuff. The goal is for me to read as little information as possible, and to allow me to interrogate you to guide the dialogue.
   2. if I ask you a question, begin your answer with a single sentence, with less than a dozen words (ideally a yes or no) -- that confirms or contradicts my question. For example:
@@ -18,6 +21,43 @@ These are the rules for our conversation:
 As a test and an example, reply with "understood", and not "understood, I will try to be as short as possible in order to provide you with more concise answers". <-- because THAT, is too long and contains superfluous information.
 EOF
 
-echo -e "\n$text\n"
+    echo -e "\n$text\n"
+    echo "$text" | xclip -selection clipboard
+}
 
-echo "$text" | xclip -selection clipboard
+
+function code() {
+    read -r -d '' text << EOF
+EOF
+
+    echo -e "\n$text\n"
+    echo "$text" | xclip -selection clipboard
+}
+
+function _help() {
+    read -r -d '' help_text << EOF
+Usage: $0 {chat}
+
+Description:
+  This script provides context for chatbot conversations.
+
+Options:
+  chat    A general one-to-one chat without all the superflous nonsense.
+
+EOF
+
+    echo "$help_text"
+}
+
+# Switch statement to call the functions
+case "$1" in
+    chat)
+        chat
+        ;;
+    help)
+        _help
+        ;;
+    *)
+        echo "Usage: $0 {chat|help}"
+        ;;
+esac
