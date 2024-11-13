@@ -77,7 +77,7 @@ class PromptBuilder:
 
         return self
 
-    def allow_elaboration(self):
+    def elaborate(self):
         """Allow for elaboration; enable it through command."""
         self.prompt.append(
             dedent(
@@ -178,7 +178,7 @@ class PromptBuilder:
         )
         return self
 
-    def provide_citations(self):
+    def cite(self):
         self.prompt.append(
             dedent(
                 """
@@ -256,11 +256,11 @@ print(args.command)
 builder = PromptBuilder()
 
 if args.command == "chat":
-    builder.verbosity("short").allow_elaboration().provide_citations().build()
+    builder.verbosity("short").elaborate().cite().build()
 elif args.command == "library":
     builder.verbosity("concise").use_format(
         "notes"
-    ).explain_library().allow_elaboration().add_opinions().build()
+    ).explain_library().elaborate().add_opinions().build()
 elif args.command == "code":
     builder.verbosity("short").provide_code_answers().build()
 else:
