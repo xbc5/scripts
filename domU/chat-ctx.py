@@ -1,7 +1,7 @@
 #!/bin/env python3
-import sys
-import subprocess  # Import subprocess for shell commands
-import argparse  # Import argparse for argument parsing
+import subprocess
+import argparse
+from textwrap import dedent
 
 
 def help_text():
@@ -20,16 +20,15 @@ Options:
 
 class PromptBuilder:
     def __init__(self):
-        self.prompt = []
+        self.prompt = ["Your answers must be in British English."]
 
     def clip(self, text):
         """Send a string to the clipboard."""
         process = subprocess.Popen(
             ["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE
-        )  # For Linux
-        process.communicate(input=text.encode("utf-8"))  # Send text to clipboard
-
-        return self  # Return self for method chaining
+        )
+        process.communicate(input=text.encode("utf-8"))
+        return self
 
     def be_concise(self):
         """1-2 paragraphs"""
@@ -74,61 +73,109 @@ class PromptBuilder:
 
     def for_notes(self):
         self.prompt.append(
-            " ".join(
-                [
-                    "Your answer must be informational, and it should be one or two paragraphs explaining the the core concepts of the subject matter.",
-                    "The formal answer is the first answer and last answer that you make. The intermediate answers are to address inquiries",
-                    "from me, to which you will respond with one or two sentences to simply gather information from me.",
-                    "I will ask you to make it formal or final, when I do that, then you must make your final answer",
-                    "include all of the context that we've discussed on that subject matter",
-                ]
+            dedent(
+                """
+                    # FORMATTING YOUR ANSWER
+                    
+                    Your answer must be informational, and it should be one or two paragraphs explaining the
+                    the core concepts of the subject matter.
+
+                    There are two types of answers:
+                      - formal: this is the answer in its final form, and it includes the entire context of my query;
+                      - intermediate: this is an answer to an inquiry, and it's one or two concise sentences that
+                        allow provides me with useful information to further interrogate you;
+
+                    How to respond to me:
+                    - when I ask you an initial question, you will initially respond with a format answer;
+                    - when I ask follow up questions, you will provide intermediate answer;
+                    - when I ask you to make it formal, or final, then you will include the entire (relative)
+                      context of our conversation as a formal answer;
+
+                """
             )
         )
         return self
 
     def explain_library(self):
         self.prompt.append(
-            " ".join(
-                [
-                    "You will describe a programming library to a programmer. Just cut the waffle, and stick to the technical details:",
-                    "purpose (4-5 words); features (1 sentence, comma separated single words);",
-                    "Write a sentence about why developers use this option over others; list the primary use cases in one or two sentences",
-                    "If it's a framework, and there are other common components or libraries frequently used with it, then you must list them.",
-                    "If it's a framework, then you must mention the languages that it supports, and what testing frameworks are available for it.",
-                    "if it's not already obvious: what fundamental technologies does it rely upon? E.g. HTML canvas, WebGL, WebAssembly, etc.",
-                    "Do NOT mention obvious things like 'a web browser' or 'HTML5', 'JavaScript', 'CSS', etc. unless it's part of the initial description.",
-                    "Mention it's maturity: version number, and first release date.",
-                    "Mention what license it uses, and if it's a framework, what license that my written code can use -- can it be used commercially, and",
-                    "can I use a proprietary license for my code?",
-                ]
+            dedent(
+                """
+                    # EXPLAINING A LIBRARY
+
+                    You will describe a programming library to a programmer. Just cut the waffle, and stick to the technical details:
+                    Describe the:
+                      a. purpose (4-5 words);
+                      b. features (1 sentence, comma separated single words);
+                      c. why developers use this option over others (1 sentence);
+                      d. the primary use cases (1-2 sentences)
+                      d. (if it's not already obvious) fundamental technologies does it rely upon (in 1-2 sentences)?:
+                         - E.g. HTML canvas, WebGL, WebAssembly, etc.
+                         - Do NOT mention obvious things like 'a web browser' or 'HTML5', 'JavaScript',
+                           'CSS', etc. unless it's part of the initial description.
+                      f. it's maturity: version number, and first release date (1 sentence; 4-5 words);
+                      g. licenses (1-2 sentences):
+                         - what license does it use?
+                         - (if applicable) what license can my written code use? Can it be used commercially, and
+                           can I use a proprietary license for my code?
+                    
+                    If it's a framework:
+                      a. and there are other common components or libraries frequently used with it, then you must list them (1-2 sentences);
+                      b. list the languages that it supports (1 sentence);
+                      c. describe what testing frameworks are commonly used for it (1 sentence);
+
+                """
             )
         )
         return self
 
     def provide_citations(self):
         self.prompt.append(
-            "Provide sources for every claim that you make: citations, and sometimes quotes"
+            dedent(
+                """
+                    # PROVIDING CITATIONS
+
+                    Provide sources for every claim that you make: citations, and sometimes quotes.
+
+                """
+            )
         )
         return self
 
     def add_opinions(self):
         self.prompt.append(
-            "Include additional opinions from social media: both positive and negative. Keep this short.",
+            dedent(
+                """
+                    # PROVIDING OPINIONS
+
+                    Include additional opinions from social media: both positive and negative.
+                    Keep this short, and broad. Include specific caveats if necessary; include
+                    common problems, criticism, and issues if necessary. You MUST provide a valid
+                    citation for every opinion that you include.
+
+                """
+            )
         )
         return self
 
     def provide_code_answers(self):
         self.prompt.append(
-            " ".join(
-                [
-                    "I will ask you about code questions, you must answer in English.",
-                    "if I ask you to 'show me...' how to write code, follow these rules:",
-                    "a. don't explain the code; just provide the code;",
-                    "b. only show me the pertinent information -- skip the boilerplate, setup code, and unrelated",
-                    "concepts (I only want to see the code that relates to my question);",
-                    "c. assume that I have good grasp of the language;",
-                    "d. exclude all comments;",
-                ]
+            dedent(
+                """
+                    # PROVIDING ANSWERS TO CODE QUESTIONS
+
+                    I will ask you code questions. Generally you will answer in English, but
+                    If I ask you to 'show me...', then write the code and follow these rules:
+                      a. don't explain the code; just provide it;
+                      b. only show me the pertinent code -- skip the boilerplate, setup code,
+                         installation, and other superfluous information. Typically this means
+                         one or two lines of code; sometimes it means just a statement. You do
+                         not necessarily need to wrap the code in a function, class, or any other
+                         construct -- the pertinent statements are enough.
+                      c. assume that I have good grasp of the language; assume that I have expert
+                         knowledge;
+                      d. exclude all comments, unless they are caveats or necessary warnings.
+
+                """
             )
         )
         return self
