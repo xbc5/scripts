@@ -2,6 +2,7 @@
 import subprocess
 import argparse
 from textwrap import dedent
+from typing import Literal
 
 
 def help_text():
@@ -20,7 +21,27 @@ Options:
 
 class PromptBuilder:
     def __init__(self):
-        self.prompt = ["Your answers must be in British English."]
+        intro = """
+           # INTRODUCTION
+
+           The following description are the rules for our conversation. There are some
+           aspects that you must know first, and some global rules that you must always
+           follow.
+
+           1. Your answers must be in British English;
+           2. there are specially demarcated sections between three dashes, for example:
+              ---
+              This is a demarcated section
+              ---
+              These sections are literal statements that you must echo back to me once you
+              acknowledge these rules. I need you to echo them back as they are written.
+              They are also cumulative, and you will encounter multiple. Your goal is to
+              combine them, and echo them literally. Words wrapped in asterisks in these
+              sections are bold, and you must echo those words emboldened -- e.g. *this is bold*.
+              When you echo this back, give it a header called "HELP TEXT".
+
+        """
+        self.prompt = [dedent(intro)]
 
     def clip(self, text):
         """Send a string to the clipboard."""
@@ -30,31 +51,50 @@ class PromptBuilder:
         process.communicate(input=text.encode("utf-8"))
         return self
 
-    def be_concise(self):
+    def verbosity(self, verbosity: Literal["concise", "short"]):
         """1-2 paragraphs"""
-        self.prompt.append(
-            " ".join(
-                [
-                    "Be as short as possible, in most cases one or two paragraphs.",
-                    "Leave out superfluous adjectives and adverbs -- e.g. powerful, immersive, amazing.",
-                    "Each statement/sentence gets right to the point -- think of a sentence, then think about",
-                    "how you can half the number of words in it. The sentence with the fewest words is the most suitable.",
-                    "don't describe what the sentence is about, just write the sentence",
-                    "Brevity is the goal.",
-                ]
-            )
-        )
+        title = "# VERBOSITY"
+        options = {
+            "concise": """
+                    Be concise:
+                    - be as short as possible, in most cases one or two paragraphs;
+                    - leave out superfluous adjectives and adverbs -- e.g. powerful, immersive, amazing;
+                    - each statement/sentence gets right to the point -- think of a sentence, then think about
+                      how you can half the number of words in it. The sentence with the fewest words is the most suitable;
+                    - don't describe what the sentence is about, just write the sentence;
+                    - Brevity is the goal.
+
+                """,
+            "short": """
+                    Be short.
+                    if I ask you a question, your answer should be one or two sentences,
+                    with around 50 words max. This should express the thesis of your answer.
+
+                """,
+        }
+
+        self.prompt.append(dedent(f"{title}\n\n{options[verbosity]}"))
+
         return self
 
     def allow_elaboration(self):
         """Allow for elaboration; enable it through command."""
         self.prompt.append(
-            " ".join(
-                [
-                    "If I ask you to elaborate, then go into further detail, but keep it to one or two concise paragraphs.",
-                    "If I say ELI5, then elaborate with the obvious stuff, use an analogies, and most importantly explain",
-                    "the why or how (whichever applies): I need to understand the context.",
-                ]
+            dedent(
+                """
+                    # ALLOW FOR ELABORATION
+
+                    - if I ask you to elaborate, then go into further detail, but keep it to one or two concise paragraphs;
+                    - if I say ELI5, then elaborate with the obvious stuff, use an analogies, and most importantly explain
+                      the why or how (whichever applies): I need to understand the context.
+
+                    ---
+                    + use *elaborate* to expand upon an answer, in a way that isn't too verbose;
+                    + use *ELI5* when you're struggling, to get detailed and patronising answers
+                      with analogies, and simple explanations;
+                    ---
+
+                """
             )
         )
         return self
@@ -71,12 +111,10 @@ class PromptBuilder:
         )
         return self
 
-    def for_notes(self):
-        self.prompt.append(
-            dedent(
-                """
-                    # FORMATTING YOUR ANSWER
-                    
+    def use_format(self, format: Literal["notes"]):
+        title = "# FORMATTING YOUR ANSWER"
+        options = {
+            "notes": """
                     Your answer must be informational, and it should be one or two paragraphs explaining the
                     the core concepts of the subject matter.
 
@@ -91,9 +129,17 @@ class PromptBuilder:
                     - when I ask you to make it formal, or final, then you will include the entire (relative)
                       context of our conversation as a formal answer;
 
+                    ---
+                    + you have requested a format that's suitable for your notes. The robot will answer
+                      initially with a formal answer. Subsequence answers are short and concise.
+                    + use the term *formal* or *final* (e.g. make that final) to request a complete answer
+                      that you can copy to your notes -- this answer includes the entire context of the
+                      conversation;
+                    ---
+
                 """
-            )
-        )
+        }
+        self.prompt.append(dedent(f"{title}\n\n{options[format]}"))
         return self
 
     def explain_library(self):
@@ -122,6 +168,10 @@ class PromptBuilder:
                       a. and there are other common components or libraries frequently used with it, then you must list them (1-2 sentences);
                       b. list the languages that it supports (1 sentence);
                       c. describe what testing frameworks are commonly used for it (1 sentence);
+
+                    ---
+                    + you have requested a library descriptor mode, it's intentionally terse and technical;
+                    ---
 
                 """
             )
@@ -175,6 +225,13 @@ class PromptBuilder:
                          knowledge;
                       d. exclude all comments, unless they are caveats or necessary warnings.
 
+                    ---
+                    + you have requested *code answers*; the robot will not provide code examples
+                      unless you state *show me*.
+                    + the code examples will only show pertinent code, and it assumes that you are
+                      an expert;
+                    ---
+
                 """
             )
         )
@@ -199,10 +256,12 @@ print(args.command)
 builder = PromptBuilder()
 
 if args.command == "chat":
-    builder.be_short().allow_elaboration().provide_citations().build()
+    builder.verbosity("short").allow_elaboration().provide_citations().build()
 elif args.command == "library":
-    builder.be_concise().for_notes().explain_library().allow_elaboration().add_opinions().build()
+    builder.verbosity("concise").use_format(
+        "notes"
+    ).explain_library().allow_elaboration().add_opinions().build()
 elif args.command == "code":
-    builder.be_short().provide_code_answers().build()
+    builder.verbosity("short").provide_code_answers().build()
 else:
     print("Invalid command")
