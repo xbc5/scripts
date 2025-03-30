@@ -120,13 +120,13 @@ update() {
 }
 
 case "$1" in
-q | quit) echo_socket "quit" ;;
+a | add) save_history_item ${@:2} ;;
+b | back) echo_socket "back" ;;
 c | choose) choose ;;
 f | forward) echo_socket "forward" ;;
-p | pause) echo_socket "pause" ;;
-b | back) echo_socket "back" ;;
-u | update) update ;;
-a | add) save_history_item ${@:2} ;;
 h | help) _help ;;
+p | pause) echo_socket "pause" ;;
+q | quit) echo_socket "quit" ;;
+u | update) update ;;
 *) echo -e "unknown command: '$0'\n" && _help ;;
 esac
