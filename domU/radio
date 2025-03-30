@@ -114,7 +114,7 @@ save_history_item() {
   local processed_title=$(echo "$title" | sed "s/${SEP}/-/g") # Replace any potential separator in the name.
 
   echo "${processed_title}${SEP}${url}" >>"$HISTORY_FILE"
-  sort -o "$HISTORY_FILE" "$HISTORY_FILE" # Keep it tidy.
+  sort -uo "$HISTORY_FILE" "$HISTORY_FILE" # Keep it tidy.
 }
 
 update() {
@@ -126,7 +126,7 @@ edit_history_file() {
 }
 
 case "$1" in
-a | add) save_history_item ${@:2} ;;
+a | add) save_history_item ${@:2} & ;;
 b | back) echo_socket "back" ;;
 c | choose) choose ;;
 e | edit) edit_history_file ;;
