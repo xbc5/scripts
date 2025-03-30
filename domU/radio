@@ -14,7 +14,6 @@ COMMANDS
   p,pause           cycle play/pause
   q,quit            quit the MPV daemon
   u,update          update the necessary dependencies (yt-dlp)
-
 EOF
 }
 
