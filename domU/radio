@@ -7,6 +7,7 @@ Usage: $(basename $0) [COMMAND]
 
 COMMANDS
   c,choose          choose a new playlist
+  e,edit            edit the history file
   f,forward         go forward on song in the playlist
   b,back            go back one song in the playlist
   p,pause           cycle play/pause
@@ -119,10 +120,15 @@ update() {
   pip install --user --upgrade yt-dlp
 }
 
+edit_history_file() {
+  ${EDITOR:-vi} "$HISTORY_FILE"
+}
+
 case "$1" in
 a | add) save_history_item ${@:2} ;;
 b | back) echo_socket "back" ;;
 c | choose) choose ;;
+e | edit) edit_history_file ;;
 f | forward) echo_socket "forward" ;;
 h | help) _help ;;
 p | pause) echo_socket "pause" ;;
