@@ -6,14 +6,15 @@ _help() {
 Usage: $(basename $0) [COMMAND]
 
 COMMANDS
+  b,back            go back one song in the playlist
   c,choose          choose a new playlist
   e,edit            edit the history file
   f,forward         go forward on song in the playlist
-  b,back            go back one song in the playlist
+  h,help            display this help menu
   p,pause           cycle play/pause
   q,quit            quit the MPV daemon
-  h,help            display this help menu
   u,update          update the necessary dependencies (yt-dlp)
+
 EOF
 }
 
