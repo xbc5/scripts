@@ -1,0 +1,132 @@
+#!/bin/bash
+set -e
+
+_help() {
+  cat <<EOF
+Usage: $(basename $0) [COMMAND]
+
+COMMANDS
+  c,choose          choose a new playlist
+  f,forward         go forward on song in the playlist
+  b,back            go back one song in the playlist
+  p,pause           cycle play/pause
+  q,quit            quit the MPV daemon
+  h,help            display this help menu
+  u,update          update the necessary dependencies (yt-dlp)
+EOF
+}
+
+# The necessary dependencies. Install these.
+DEP_ERR=""
+[[ $(command -v yt-dlp) ]] || DEP_ERR+="install yt-dlp\n" # WARN: install form pip or the repo: this breaks a lot
+[[ $(command -v jq) ]] || DEP_ERR+="install jq\n"
+[[ $(command -v mpv) ]] || DEP_ERR+="install mpv\n"
+[[ $(command -v fzf) ]] || DEP_ERR+="install fzf\n"
+[[ -n "$DEP_ERR" ]] && {
+  echo -e "$DEP_ERR"
+  exit 1
+}
+if ! [[ -f "${HOME}/.local/bin/yt-dlp" ]]; then
+  echo -e "\e[33mWARN: you appear to be using a distro-based version of yt-dlp: these break often; use \`pip install --user yt-dlp\` and keep it up to date.\e[0m"
+fi
+
+CONFIG_HOME="${XDG_CONFIG_HOME:-${HOME}/.config}"
+
+SOCKET="$CONFIG_HOME/mpv/socket"
+mkdir -p "$CONFIG_HOME/mpv"
+
+CONF="${CONFIG_HOME}/radio"
+mkdir -p "$CONF"
+HISTORY_FILE="${CONF}/history"
+
+# The separator for key|values in the history file.
+# It MUST be a character that is not allowed in a URL: a pipe is percent encoded.
+SEP="|"
+
+echo_socket() {
+  [[ -e "$SOCKET" ]] || { echo "open MPV socket first" && exit 1; }
+
+  case "$1" in
+  quit) (echo quit | socat - "$SOCKET" &>/dev/null) || true ;;
+  forward) echo playlist-next | socat - "$SOCKET" ;;
+  back) echo playlist-prev | socat - "$SOCKET" ;;
+  pause) echo cycle pause | socat - "$SOCKET" ;;
+  *) echo "unknown socket command" && exit 1 ;;
+  esac
+}
+
+pick() {
+  # Unfortunately I cannot remove the delimeter form the end of each line: https://github.com/junegunn/fzf/issues/585
+  # Easy to read is better that some clever parsing, so I've left it in.
+  local choice=$(echo -e "$(get_history)" | fzf --delimiter="$SEP" --with-nth=1 --preview="echo {}" --preview-window=up:1:wrap)
+  [[ -z "$choice" ]] && exit 1
+  echo "$choice" | cut -d"$SEP" -f2
+}
+
+choose() {
+  local url="$(pick)"
+  # This is where we would do some RegExp on the URL
+  # and launch the appropriate MPV fn, but we only
+  # have one for now: YT.
+  [[ -z "$url" ]] && exit 1
+  play_yt_playlist "$url"
+}
+
+get_yt_playlist_title() {
+  local url="$1"
+  # returns multiple JSON objects, each specify which playlist (title) that they belong to.
+  yt-dlp --dump-json --flat-playlist "$url" | jq -sr 'first | .playlist_title' | tr -d '\n'
+}
+
+stop_daemons() {
+  # In the future, I may use different applications to stream; so this
+  # stops them all (between loading new playlists|streams).
+  [[ -e "$SOCKET" ]] && echo_socket "quit"
+}
+
+play_yt_playlist() {
+  stop_daemons
+  # Give quit command time, otherwise connection refused;
+
+  local url="$1"
+  nohup mpv \
+    --input-ipc-server="$SOCKET" \
+    --vo=null \
+    --ytdl-raw-options="yes-playlist=" \
+    "$url" >/dev/null &
+}
+
+get_history() {
+  touch "$HISTORY_FILE"
+  cat "$HISTORY_FILE"
+}
+
+save_history_item() {
+  # This will need refactored if I add support for more than YT.
+  local url="$1"
+  [[ -z "$url" ]] && echo "provide a url" && exit 1
+
+  touch "$HISTORY_FILE"
+
+  local title=$(get_yt_playlist_title $url)                   # Fetch it from remote.
+  local processed_title=$(echo "$title" | sed "s/${SEP}/-/g") # Replace any potential separator in the name.
+
+  echo "${processed_title}${SEP}${url}" >>"$HISTORY_FILE"
+  sort -o "$HISTORY_FILE" "$HISTORY_FILE" # Keep it tidy.
+}
+
+update() {
+  pip install --user --upgrade yt-dlp
+}
+
+case "$1" in
+q | quit) echo_socket "quit" ;;
+c | choose) choose ;;
+f | forward) echo_socket "forward" ;;
+p | pause) echo_socket "pause" ;;
+b | back) echo_socket "back" ;;
+u | update) update ;;
+h | help) _help ;;
+w) save_history_item "$1" ;;
+*) echo -e "unknown command: '$0'\n" && _help ;;
+esac
