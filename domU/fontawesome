@@ -1,0 +1,191 @@
+#!/bin/bash
+set -e
+
+# Font Awesome Installer/Uninstaller
+# Usage: ./fontawesome.sh [--user] [install|remove] [VERSION_OR_MAJOR]
+#
+# The process:
+# 1. download the free desktop fonts from https://fontawesome.com/download.
+# 2. Install them as fontawesome_n (e.g. 4, 5, 6).
+# 3. Update the font cache.
+#
+# View fonts with fc-list.
+# You can install multiple major versions, but not multiple minor versions.
+
+### Global Variables ###
+USER_MODE=false
+FONT_BASE_DIR=""
+
+### Functions ###
+
+show_help() {
+  cat <<EOF
+Font Awesome Installer/Remover
+
+Usage: $0 [--user] [COMMAND] [VERSION_OR_MAJOR]
+
+Options:
+  --user    Install/remove fonts for current user (~/.local/share/fonts) instead of system-wide
+
+Commands:
+  install [VERSION]    Install Font Awesome (e.g., 5.15.4)
+  remove [MAJOR]       Remove Font Awesome by major version (e.g., 5)
+  help                 Show this help message
+
+Examples:
+  $0 install 5.15.4               # Installs system-wide (requires sudo)
+  $0 --user install 5.15.4        # Installs for current user only
+  $0 remove 5                     # Removes system-wide v5.x.x
+  $0 --user remove 5              # Removes user-local v5.x.x
+EOF
+  exit 0
+}
+
+validate_semver() {
+  if [[ ! "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: Version must be in semver format (e.g., '5.15.4')" >&2
+    exit 1
+  fi
+}
+
+setup_paths() {
+  local version="$1"
+  MAJOR_VERSION="${version%%.*}"
+  URL="https://use.fontawesome.com/releases/v${version}/fontawesome-free-${version}-desktop.zip"
+  TMP_ZIP="/tmp/fontawesome-${version}.zip"
+  TMP_DIR="/tmp/fontawesome-${version}"
+
+  if [ "$USER_MODE" = true ]; then
+    FONT_BASE_DIR="${HOME}/.local/share/fonts"
+  else
+    FONT_BASE_DIR="/usr/share/fonts"
+  fi
+
+  TARGET_DIR="${FONT_BASE_DIR}/fontawesome-${MAJOR_VERSION}"
+}
+
+check_conflict() {
+  if [ -d "$TARGET_DIR" ]; then
+    echo "Error: Font Awesome v${MAJOR_VERSION}.x.x already installed at ${TARGET_DIR}" >&2
+    echo "Remove it first with: $0 ${USER_FLAG}remove ${MAJOR_VERSION}" >&2
+    exit 1
+  fi
+}
+
+install_font() {
+  echo "Installing Font Awesome ${VERSION} ${USER_LOCATION}..."
+
+  # Check for conflict
+  check_conflict
+
+  # Download
+  if ! curl -sSL "$URL" -o "$TMP_ZIP"; then
+    echo "Error: Failed to download Font Awesome ${VERSION}" >&2
+    exit 1
+  fi
+
+  # Extract
+  mkdir -p "$TMP_DIR"
+  if ! unzip -q "$TMP_ZIP" -d "$TMP_DIR"; then
+    echo "Error: Failed to extract archive" >&2
+    exit 1
+  fi
+
+  # Install
+  mkdir -p "$TARGET_DIR"
+  cp -r "${TMP_DIR}/fontawesome-free-${VERSION}-desktop/otfs/"* "$TARGET_DIR/"
+
+  # Cleanup
+  rm -rf "$TMP_ZIP" "$TMP_DIR"
+
+  # Update font cache
+  echo "Updating font cache..."
+  fc-cache -f -v >/dev/null
+
+  echo "✅ Successfully installed Font Awesome ${VERSION} to ${TARGET_DIR}"
+}
+
+remove_font() {
+  local major="$1"
+  local target_dir="${FONT_BASE_DIR}/fontawesome-${major}"
+
+  echo "Removing Font Awesome v${major}.x.x ${USER_LOCATION}..."
+
+  if [ ! -d "$target_dir" ]; then
+    echo "Error: Directory ${target_dir} does not exist" >&2
+    exit 1
+  fi
+
+  rm -rf "$target_dir"
+
+  # Update font cache
+  echo "Updating font cache..."
+  fc-cache -f -v >/dev/null
+
+  echo "✅ Successfully removed Font Awesome v${major}.x.x"
+}
+
+### Parse Arguments ###
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+  --user)
+    USER_MODE=true
+    USER_LOCATION="(user-local)"
+    shift
+    ;;
+  install | remove | help)
+    COMMAND="$1"
+    shift
+    break # Stop parsing after command
+    ;;
+  *)
+    echo "Error: Unknown option '$1'" >&2
+    show_help
+    exit 1
+    ;;
+  esac
+done
+
+### Main Logic ###
+
+if [ -z "$COMMAND" ]; then
+  echo "Error: No command provided" >&2
+  show_help
+  exit 1
+fi
+
+case "$COMMAND" in
+install)
+  if [ -z "$1" ]; then
+    echo "Error: Version not specified" >&2
+    show_help
+    exit 1
+  fi
+  VERSION="$1"
+  validate_semver "$VERSION"
+  setup_paths "$VERSION"
+  install_font
+  ;;
+remove)
+  if [ -z "$1" ]; then
+    echo "Error: Major version not specified (e.g., '5')" >&2
+    show_help
+    exit 1
+  fi
+  if [[ ! "$1" =~ ^[0-9]+$ ]]; then
+    echo "Error: Major version must be a number (e.g., '5')" >&2
+    exit 1
+  fi
+  setup_paths "$1.0.0" # Dummy version to set paths
+  remove_font "$1"
+  ;;
+help)
+  show_help
+  ;;
+*)
+  echo "Error: Invalid command '$COMMAND'" >&2
+  show_help
+  exit 1
+  ;;
+esac
