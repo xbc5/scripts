@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""
+Add WiFi credentials to the target NetVM and template VM.
+"""
+
+import sys
+import subprocess
+import argparse
+from dataclasses import dataclass
+from getpass import getpass
+from typing import Callable, TypeVar
+
+
+######################################################################
+#                               CONFIG                               #
+######################################################################
+NET_QUBE_NAME = "net"
+NET_QUBE_TEMPLATE_NAME = "net-t"
+
+
+######################################################################
+#                                LIB                                 #
+######################################################################
+@dataclass
+class Args:
+    command: str
+    ssid: str
+    temp: bool
+
+
+def parse_args() -> Args:
+    parser = argparse.ArgumentParser(
+        description=f"Connect to WiFi via nmcli.",
+        formatter_class=argparse.RawTextHelpFormatter,  # For better formatting of subcommand help
+    )
+
+    # GLOBAL FLAGS --------------------------------------------------
+    parser.add_argument(
+        "-t",
+        "--temp",
+        action="store_true",
+        help=f"When set, operations only apply to the normal net-vm: {NET_QUBE_NAME},\n"
+        f"skipping operations on {NET_QUBE_TEMPLATE_NAME}.",
+    )
+
+    # COMMAND -------------------------------------------------------
+    subparsers = parser.add_subparsers(
+        dest="command",  # Variable name to store the command.
+        required=True,
+        help="Available commands",
+    )
+    # - CONNECT -
+    connect_parser = subparsers.add_parser(
+        "connect", help="Connect to a WiFi network. Prompts for password and stores it."
+    )
+    connect_parser.add_argument("ssid", help="SSID of the WiFi network to connect to.")
+
+    # - ADD -
+    add_parser = subparsers.add_parser(
+        "add", help="Add WiFi network details without connecting. Prompts for password."
+    )
+    add_parser.add_argument("ssid", help="SSID of the WiFi network to add details for.")
+
+    # PARSE ARGS ----------------------------------------------------
+    parsed = parser.parse_args()
+    return Args(command=parsed.command, ssid=parsed.ssid, temp=parsed.temp)
+
+
+def connect_wifi(qube: str, ssid: str, password: str):
+    cmd = [
+        "qvm-run",
+        "--no-gui",
+        "--user",
+        "root",
+        qube,
+        f'nmcli radio wifi on; nmcli device wifi connect "{ssid}" password "{password}"',
+    ]
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to connect WiFi in qube '{qube}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def add_password(qube: str, ssid: str, password: str):
+    cmd = [
+        "qvm-run",
+        "--no-gui",
+        "--user",
+        "root",
+        qube,
+        f"nmcli connection modify '{ssid}' 802-11-wireless-security.psk '{password}'",
+    ]
+    try:
+        subprocess.run(cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to add WiFi password to qube '{qube}': {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+Fn = Callable[[Args, str], None]
+
+
+def with_credentials(args: Args, fn: Fn, msg: str):
+    """
+    Simply wrap `fn` with a password prompt and persistence (via the template).
+    """
+    wifi_pass = getpass(f"Enter WiFi password for SSID '{args.ssid}': ")
+
+    print(msg)
+    fn(args, wifi_pass)
+
+    # Add credentials to the template, unless --temp is set.
+    if not args.temp:  # If not temporary.
+        print(f"Persisting credentials via the template: {NET_QUBE_TEMPLATE_NAME}..")
+        add_password(NET_QUBE_TEMPLATE_NAME, args.ssid, wifi_pass)
+
+
+######################################################################
+#                                MAIN                                #
+######################################################################
+def main():
+    args = parse_args()
+
+    match args.command:
+        case "connect":
+            with_credentials(
+                args,
+                lambda args, wifi_pass: connect_wifi(
+                    NET_QUBE_NAME, args.ssid, wifi_pass
+                ),
+                f"Connecting to WiFi on NetVM: {NET_QUBE_NAME}..",
+            )
+
+        case "add":
+            with_credentials(
+                args,
+                lambda args, wifi_pass: add_password(
+                    NET_QUBE_NAME, args.ssid, wifi_pass
+                ),
+                f"Adding WiFi credentials to the NetVM: {NET_QUBE_NAME}..",
+            )
+
+        case _:
+            raise ValueError(f"Unknown command: '{args.command}'")
+
+
+if __name__ == "__main__":
+    main()
